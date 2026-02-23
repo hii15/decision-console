@@ -12,14 +12,11 @@ def load_file(uploaded_file):
     raise ValueError("Unsupported file format. Use CSV or XLSX.")
 
 
-def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True) -> pd.DataFrame:
+def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True, **kwargs) -> pd.DataFrame:
     """
     installs_raw.csv (Appsflyer/Adjust 스타일) 대응
-    기대 컬럼:
-      - install_time_utc (필수)  ※ install_time 없음
-      - media_source, campaign (필수)
-      - appsflyer_id (권장)
-    cost 컬럼은 없을 수 있음 → (옵션) 더미 cost 생성
+    - generate_cost_if_missing: cost 없을 때 더미 생성 여부
+    - **kwargs: 과거/미래 파라미터 호환용
     """
     df = df.copy()
 
@@ -45,11 +42,10 @@ def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True)
 
     df["install_date"] = df["install_time"].dt.date
 
-    # cost 처리 (네 더미데이터에는 없음)
+    # cost 처리
     if "cost" not in df.columns:
         if generate_cost_if_missing:
-            # 소스별 CPI 더미 생성 (USD 기준, 실무 느낌)
-            # organic은 0
+            import numpy as np
             base_cpi = {
                 "facebook": 3.5,
                 "googleadwords_int": 4.2,
@@ -58,9 +54,9 @@ def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True)
             }
             rng = np.random.default_rng(42)
             cpi = df["media_source"].map(base_cpi).fillna(3.5).to_numpy()
-            noise = rng.normal(0, 0.6, size=len(df))  # 약간의 변동
+            noise = rng.normal(0, 0.6, size=len(df))
             cpi = np.clip(cpi + noise, 0, None)
-            df["cost"] = cpi  # install row 당 cost로 가정(더미)
+            df["cost"] = cpi
         else:
             df["cost"] = 0.0
     else:

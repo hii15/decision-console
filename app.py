@@ -31,7 +31,7 @@ if installs_file and events_file:
     # =============================
     # 2️⃣ 데이터 로딩
     # =============================
-    installs_df = preprocess_installs(load_file(installs_file))
+    installs_df = preprocess_installs(load_file(installs_file), generate_cost_if_missing=True)
     events_df = preprocess_events(load_file(events_file))
 
     st.success("Files Loaded Successfully")

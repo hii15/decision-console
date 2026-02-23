@@ -1,85 +1,111 @@
 # data_processing/loader.py
-
 import pandas as pd
+import numpy as np
 
 
 def load_file(uploaded_file):
+    name = getattr(uploaded_file, "name", "") or str(uploaded_file)
+    if name.endswith(".csv"):
+        return pd.read_csv(uploaded_file)
+    if name.endswith(".xlsx") or name.endswith(".xls"):
+        return pd.read_excel(uploaded_file)
+    raise ValueError("Unsupported file format. Use CSV or XLSX.")
+
+
+def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True) -> pd.DataFrame:
     """
-    CSV / XLSX 파일 로드
-
-    Returns:
-        pd.DataFrame
+    installs_raw.csv (Appsflyer/Adjust 스타일) 대응
+    기대 컬럼:
+      - install_time_utc (필수)  ※ install_time 없음
+      - media_source, campaign (필수)
+      - appsflyer_id (권장)
+    cost 컬럼은 없을 수 있음 → (옵션) 더미 cost 생성
     """
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    elif uploaded_file.name.endswith(".xlsx"):
-        df = pd.read_excel(uploaded_file)
-    else:
-        raise ValueError("Unsupported file format. Use CSV or XLSX.")
-
-    return df
-
-
-def preprocess_installs(df):
-    """
-    installs raw 전처리
-
-    Expected Columns:
-        install_time
-        media_source
-        campaign
-        cost (optional)
-
-    Returns:
-        cleaned installs df
-    """
-
     df = df.copy()
 
-    # 날짜 컬럼 통일
-    if "install_time" in df.columns:
-        df["install_date"] = pd.to_datetime(df["install_time"]).dt.date
-    elif "install_date" in df.columns:
-        df["install_date"] = pd.to_datetime(df["install_date"]).dt.date
-    else:
-        raise ValueError("install_time or install_date column required")
-
-    # 필수 컬럼 체크
-    required_cols = ["media_source", "campaign"]
-    for col in required_cols:
+    for col in ["media_source", "campaign"]:
         if col not in df.columns:
-            raise ValueError(f"{col} column missing in installs data")
+            raise ValueError(f"installs data missing required column: '{col}'")
+
+    # install_time_utc 우선 사용
+    if "install_time_utc" in df.columns:
+        df["install_time"] = pd.to_datetime(df["install_time_utc"], errors="coerce")
+    elif "install_time" in df.columns:
+        df["install_time"] = pd.to_datetime(df["install_time"], errors="coerce")
+    elif "install_date" in df.columns:
+        df["install_time"] = pd.to_datetime(df["install_date"], errors="coerce")
+    else:
+        raise ValueError(
+            "installs needs one of: install_time_utc / install_time / install_date. "
+            f"Your columns: {list(df.columns)}"
+        )
+
+    if df["install_time"].isna().all():
+        raise ValueError("install_time could not be parsed. Check install_time_utc format.")
+
+    df["install_date"] = df["install_time"].dt.date
+
+    # cost 처리 (네 더미데이터에는 없음)
+    if "cost" not in df.columns:
+        if generate_cost_if_missing:
+            # 소스별 CPI 더미 생성 (USD 기준, 실무 느낌)
+            # organic은 0
+            base_cpi = {
+                "facebook": 3.5,
+                "googleadwords_int": 4.2,
+                "tiktok_int": 2.6,
+                "organic": 0.0,
+            }
+            rng = np.random.default_rng(42)
+            cpi = df["media_source"].map(base_cpi).fillna(3.5).to_numpy()
+            noise = rng.normal(0, 0.6, size=len(df))  # 약간의 변동
+            cpi = np.clip(cpi + noise, 0, None)
+            df["cost"] = cpi  # install row 당 cost로 가정(더미)
+        else:
+            df["cost"] = 0.0
+    else:
+        df["cost"] = pd.to_numeric(df["cost"], errors="coerce").fillna(0.0)
 
     return df
 
 
-def preprocess_events(df):
+def preprocess_events(df: pd.DataFrame) -> pd.DataFrame:
     """
-    events raw 전처리
-
-    Expected Columns:
-        event_time
-        event_name
-        revenue (optional)
-        media_source
-        campaign
-
-    Returns:
-        cleaned events df
+    events_raw.csv 대응
+    기대 컬럼:
+      - event_time_utc (필수)
+      - event_name (필수)
+      - af_revenue_usd 또는 event_revenue (둘 중 하나)
+      - appsflyer_id (권장, cohort join 정확도용)
     """
-
     df = df.copy()
 
-    # 날짜 컬럼 통일
-    if "event_time" in df.columns:
-        df["event_date"] = pd.to_datetime(df["event_time"]).dt.date
-    elif "event_date" in df.columns:
-        df["event_date"] = pd.to_datetime(df["event_date"]).dt.date
-    else:
-        raise ValueError("event_time or event_date column required")
+    if "event_name" not in df.columns:
+        raise ValueError("events data missing required column: 'event_name'")
 
-    # revenue 없으면 0 처리
-    if "revenue" not in df.columns:
-        df["revenue"] = 0
+    if "event_time_utc" in df.columns:
+        df["event_time"] = pd.to_datetime(df["event_time_utc"], errors="coerce")
+    elif "event_time" in df.columns:
+        df["event_time"] = pd.to_datetime(df["event_time"], errors="coerce")
+    elif "event_date" in df.columns:
+        df["event_time"] = pd.to_datetime(df["event_date"], errors="coerce")
+    else:
+        raise ValueError(
+            "events needs one of: event_time_utc / event_time / event_date. "
+            f"Your columns: {list(df.columns)}"
+        )
+
+    if df["event_time"].isna().all():
+        raise ValueError("event_time could not be parsed. Check event_time_utc format.")
+
+    df["event_date"] = df["event_time"].dt.date
+
+    # revenue: af_revenue_usd 우선
+    if "af_revenue_usd" in df.columns:
+        df["revenue"] = pd.to_numeric(df["af_revenue_usd"], errors="coerce").fillna(0.0)
+    elif "event_revenue" in df.columns:
+        df["revenue"] = pd.to_numeric(df["event_revenue"], errors="coerce").fillna(0.0)
+    else:
+        df["revenue"] = 0.0
 
     return df

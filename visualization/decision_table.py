@@ -1,58 +1,29 @@
-# visualization/decision_table.py
-
-import pandas as pd
-
-
-def format_percentage(x):
+def _fmt_float(x, digits=2):
     try:
-        return f"{x:.2%}"
-    except:
-        return x
-
-
-def format_number(x):
-    try:
-        return f"{x:,.2f}"
-    except:
+        return f"{float(x):,.{digits}f}"
+    except Exception:
         return x
 
 
 def style_decision_table(df):
-    """
-    Decision 결과 테이블 스타일링
-    - ROAS / Target % 포맷
-    - LTV 숫자 포맷
-    - Decision 컬러 구분
-    """
-
-    df = df.copy()
-
-    # 포맷 적용용 복사
     display_df = df.copy()
 
-    percentage_cols = ["d7_roas", "adjusted_target_roas", "roas_gap"]
-    number_cols = ["d7_ltv", "d7_revenue", "cost"]
-
-    for col in percentage_cols:
+    # ROAS는 배수 형태로 보여주는 게 실무에서 더 자연스럽다
+    for col in ["d7_roas", "adjusted_target_roas", "roas_gap"]:
         if col in display_df.columns:
-            display_df[col] = display_df[col].apply(format_percentage)
+            display_df[col] = display_df[col].apply(lambda v: _fmt_float(v, 3))
 
-    for col in number_cols:
+    for col in ["d7_ltv", "d7_revenue", "cost"]:
         if col in display_df.columns:
-            display_df[col] = display_df[col].apply(format_number)
+            display_df[col] = display_df[col].apply(lambda v: _fmt_float(v, 2))
 
-    def highlight_decision(val):
+    def highlight(val):
         if val == "Scale":
             return "background-color: #1f8b4c; color: white;"
-        elif val == "Test":
+        if val == "Test":
             return "background-color: #f0ad4e; color: black;"
-        elif val == "Reduce":
+        if val == "Reduce":
             return "background-color: #d9534f; color: white;"
         return ""
 
-    styled = display_df.style.applymap(
-        highlight_decision,
-        subset=["decision"]
-    )
-
-    return styled
+    return display_df.style.applymap(highlight, subset=["decision"])

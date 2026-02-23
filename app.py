@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd
 
 from data_processing.loader import load_file, preprocess_installs, preprocess_events
 from data_processing.ltv_calculator import calculate_d7_ltv
@@ -71,28 +72,71 @@ with tab1:
 with tab2:
     st.markdown("## Risk Heatmap (Install Cohort 기반)")
 
-    col_a, col_b = st.columns([1, 1])
-    with col_a:
+    # --- 컨트롤 패널 ---
+    c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
+
+    with c1:
         level = st.selectbox(
             "Heatmap Level",
             ["media_source", "campaign", "media_source_campaign"],
             index=0
         )
-    with col_b:
+
+    with c2:
         metric = st.selectbox(
             "Metric",
             ["d7_roas", "cost", "installs", "d7_revenue"],
             index=0
         )
 
+    with c3:
+        lookback = st.selectbox(
+            "Date Range",
+            ["Last 14 days", "Last 30 days", "Last 60 days", "All"],
+            index=1
+        )
+
+    with c4:
+        enable_mask = st.checkbox("Mask low volume cells", value=True)
+
+    # --- 마스킹 기준 ---
+    min_installs = None
+    min_cost = None
+    if enable_mask:
+        m1, m2 = st.columns(2)
+        with m1:
+            min_installs = st.number_input("Min installs per cell", min_value=0, value=30, step=10)
+        with m2:
+            min_cost = st.number_input("Min cost per cell", min_value=0.0, value=50.0, step=10.0)
+
+    # daily cohort metrics
     daily_df = compute_daily_d7_metrics(installs_df, events_df, level=level)
+
+    # --- 기간 필터 적용 ---
+    daily_df["install_date"] = pd.to_datetime(daily_df["install_date"])
+    max_date = daily_df["install_date"].max()
+
+    if lookback != "All":
+        days = int(lookback.split()[1])
+        start_date = max_date - pd.Timedelta(days=days - 1)
+        daily_df = daily_df[daily_df["install_date"] >= start_date].copy()
 
     # metric별 title
     title_map = {
-        "d7_roas": "D7 ROAS Heatmap",
+        "d7_roas": "D7 ROAS Heatmap (centered at Target)",
         "cost": "Cost Heatmap",
         "installs": "Installs Heatmap",
         "d7_revenue": "D7 Revenue Heatmap",
     }
 
-    show_risk_heatmap(daily_df, value_col=metric, title=title_map.get(metric, "Heatmap"))
+    # ROAS는 타겟 기준으로 center
+    center_value = base_target if metric == "d7_roas" else None
+
+    show_risk_heatmap(
+        daily_df,
+        value_col=metric,
+        title=title_map.get(metric, "Heatmap"),
+        center_value=center_value,
+        min_installs=int(min_installs) if enable_mask else None,
+        min_cost=float(min_cost) if enable_mask else None,
+    )

@@ -2,28 +2,31 @@ import pandas as pd
 import numpy as np
 
 
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # 컬럼명 공백/이상 문자 제거
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
+
+
 def load_file(uploaded_file):
     name = getattr(uploaded_file, "name", "") or str(uploaded_file)
     if name.endswith(".csv"):
-        return pd.read_csv(uploaded_file)
-    if name.endswith(".xlsx") or name.endswith(".xls"):
-        return pd.read_excel(uploaded_file)
-    raise ValueError("Unsupported file format. Use CSV or XLSX.")
+        df = pd.read_csv(uploaded_file)
+    elif name.endswith(".xlsx") or name.endswith(".xls"):
+        df = pd.read_excel(uploaded_file)
+    else:
+        raise ValueError("Unsupported file format. Use CSV or XLSX.")
+    return _normalize_columns(df)
 
 
 def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True, **kwargs) -> pd.DataFrame:
-    """
-    installs_raw.csv (dummy MMP/Appsflyer raw 형태) 대응
-    - install_time_utc를 표준 install_time으로 변환
-    - install_date 추가
-    - cost 없으면 (옵션) 더미 CPI 기반 cost 생성
-    """
-    df = df.copy()
+    df = _normalize_columns(df)
 
-    # 필수
+    # 필수 컬럼(공백 제거 후 체크)
     for col in ["media_source", "campaign"]:
         if col not in df.columns:
-            raise ValueError(f"[installs] missing required column: {col}. columns={list(df.columns)}")
+            raise ValueError(f"[installs] missing required column: '{col}'. columns={list(df.columns)}")
 
     # 시간 컬럼
     if "install_time_utc" in df.columns:
@@ -34,7 +37,7 @@ def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True,
         df["install_time"] = pd.to_datetime(df["install_date"], errors="coerce")
     else:
         raise ValueError(
-            "[installs] needs one of install_time_utc/install_time/install_date. "
+            "[installs] needs one of install_time_utc / install_time / install_date. "
             f"columns={list(df.columns)}"
         )
 
@@ -62,16 +65,15 @@ def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True,
     else:
         df["cost"] = pd.to_numeric(df["cost"], errors="coerce").fillna(0.0)
 
+    # appsflyer_id 없으면 생성(더미라도)
+    if "appsflyer_id" not in df.columns:
+        df["appsflyer_id"] = df.index.astype(str)
+
     return df
 
 
 def preprocess_events(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
-    """
-    events_raw.csv 대응
-    - event_time_utc -> event_time 표준화
-    - revenue: af_revenue_usd 우선, 없으면 event_revenue 사용
-    """
-    df = df.copy()
+    df = _normalize_columns(df)
 
     if "event_name" not in df.columns:
         raise ValueError(f"[events] missing required column: event_name. columns={list(df.columns)}")
@@ -84,7 +86,7 @@ def preprocess_events(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
         df["event_time"] = pd.to_datetime(df["event_date"], errors="coerce")
     else:
         raise ValueError(
-            "[events] needs one of event_time_utc/event_time/event_date. "
+            "[events] needs one of event_time_utc / event_time / event_date. "
             f"columns={list(df.columns)}"
         )
 
@@ -100,9 +102,7 @@ def preprocess_events(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
     else:
         df["revenue"] = 0.0
 
-    # appsflyer_id는 cohort join에 중요
     if "appsflyer_id" not in df.columns:
-        # 없으면 나중에 정확 조인이 어려움
         df["appsflyer_id"] = None
 
     return df

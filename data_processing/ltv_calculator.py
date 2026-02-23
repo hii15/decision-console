@@ -2,16 +2,19 @@ import pandas as pd
 import numpy as np
 
 
-def calculate_d7_ltv(installs_df: pd.DataFrame, events_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    D7 LTV/ROAS 계산 (appsflyer_id로 join → raw 느낌)
-    - purchase 이벤트(af_purchase)만 revenue로 사용
-    - install 이후 0~7일 누적 revenue
-    - media_source + campaign 집계
-    """
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    # index로 들어간 컬럼이 있으면 다시 컬럼으로
+    if isinstance(df.index, pd.MultiIndex) or df.index.name is not None:
+        df = df.reset_index()
 
-    installs = installs_df.copy()
-    events = events_df.copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    return df
+
+
+def calculate_d7_ltv(installs_df: pd.DataFrame, events_df: pd.DataFrame) -> pd.DataFrame:
+    installs = _normalize_columns(installs_df)
+    events = _normalize_columns(events_df)
 
     # installs 필수
     for col in ["appsflyer_id", "media_source", "campaign", "install_time", "cost"]:
@@ -29,6 +32,7 @@ def calculate_d7_ltv(installs_df: pd.DataFrame, events_df: pd.DataFrame) -> pd.D
     installs = installs[~installs["install_time"].isna()].copy()
     events = events[~events["event_time"].isna()].copy()
 
+    # events에 source/campaign/설치시간 붙이기
     inst_key = installs[["appsflyer_id", "media_source", "campaign", "install_time"]].copy()
     ev = events.merge(inst_key, on="appsflyer_id", how="left")
 
@@ -40,18 +44,24 @@ def calculate_d7_ltv(installs_df: pd.DataFrame, events_df: pd.DataFrame) -> pd.D
 
     purchase_d7 = ev_d7[ev_d7["event_name"] == "af_purchase"].copy()
 
-    # revenue 집계
+    # D7 revenue 집계
     if len(purchase_d7) > 0:
         rev_agg = (
             purchase_d7.groupby(["media_source", "campaign"], as_index=False)
             .agg(d7_revenue=("revenue", "sum"))
         )
     else:
-        # purchase 없으면 0으로
-        rev_agg = installs.groupby(["media_source", "campaign"], as_index=False).size()
-        rev_agg = rev_agg[["media_source", "campaign"]]
+        # purchase 없으면 0으로 (여기서 groupby KeyError 방지 위해 columns 재확인)
+        if not all(c in installs.columns for c in ["media_source", "campaign"]):
+            raise KeyError(f"[installs] groupby keys missing. columns={list(installs.columns)}")
+        rev_agg = (
+            installs.groupby(["media_source", "campaign"], as_index=False)
+            .size()
+            .loc[:, ["media_source", "campaign"]]
+        )
         rev_agg["d7_revenue"] = 0.0
 
+    # installs/cost 집계
     inst_agg = (
         installs.groupby(["media_source", "campaign"], as_index=False)
         .agg(
@@ -66,7 +76,4 @@ def calculate_d7_ltv(installs_df: pd.DataFrame, events_df: pd.DataFrame) -> pd.D
     result["d7_ltv"] = result["d7_revenue"] / result["installs"].replace(0, np.nan)
     result["d7_roas"] = result["d7_revenue"] / result["cost"].replace(0, np.nan)
 
-    result["d7_ltv"] = result["d7_ltv"].fillna(0.0)
-    result["d7_roas"] = result["d7_roas"].fillna(0.0)
-
-    return result
+    return result.fillna({"d7_ltv": 0.0, "d7_roas": 0.0})

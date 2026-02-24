@@ -143,7 +143,7 @@ with tab2:
 with tab3:
     st.markdown("## LTV / ROAS Curve (Install Cohort 누적)")
 
-    c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
+    c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
 
     with c1:
         curve_level = st.selectbox(
@@ -172,10 +172,11 @@ with tab3:
     with c4:
         top_n = st.number_input("Auto-select Top N", min_value=1, value=8, step=1, key="cv_topn")
 
-    # day points (고정 프리셋)
+    with c5:
+        show_sample = st.checkbox("Show N/Cost in legend", value=True, key="cv_show_sample")
+
     day_points = (0, 1, 3, 7)
 
-    # lookback_days 변환
     lookback_days = None
     if curve_range != "All":
         lookback_days = int(curve_range.split()[1])
@@ -193,13 +194,14 @@ with tab3:
         st.warning("No curve data. Try changing filters.")
         st.stop()
 
-    # 기본 선택: metric에 따라 "의미 있는" 기준으로 상위 N 자동 선택
+    # default keys: D7 기준 상위 N
+    last_day = max(day_points)
     if curve_metric == "revenue":
-        rank = curve_df[curve_df["day"] == max(day_points)].sort_values("revenue", ascending=False)
+        rank = curve_df[curve_df["day"] == last_day].sort_values("revenue", ascending=False)
     elif curve_metric == "roas":
-        rank = curve_df[curve_df["day"] == max(day_points)].sort_values("roas", ascending=False)
+        rank = curve_df[curve_df["day"] == last_day].sort_values("roas", ascending=False)
     else:
-        rank = curve_df[curve_df["day"] == max(day_points)].sort_values("ltv", ascending=False)
+        rank = curve_df[curve_df["day"] == last_day].sort_values("ltv", ascending=False)
 
     default_keys = rank["level_key"].head(int(top_n)).tolist()
     all_keys = sorted(curve_df["level_key"].unique().tolist())
@@ -211,12 +213,17 @@ with tab3:
         key="cv_keys"
     )
 
-    # 작은 표본 노이즈 참고용 요약
     with st.expander("Series Summary (D7 기준)"):
-        d_last = curve_df[curve_df["day"] == max(day_points)].copy()
+        d_last = curve_df[curve_df["day"] == last_day].copy()
         d_last = d_last[d_last["level_key"].isin(selected_keys)].copy()
         show_cols = ["level_key", "installs", "cost", "revenue", "ltv", "roas"]
         st.dataframe(d_last[show_cols].sort_values(curve_metric, ascending=False), use_container_width=True)
 
     title = f"Cumulative Curve ({curve_level}) - days={list(day_points)}"
-    show_ltv_curve(curve_df, metric=curve_metric, selected_keys=selected_keys, title=title)
+    show_ltv_curve(
+        curve_df,
+        metric=curve_metric,
+        selected_keys=selected_keys,
+        title=title,
+        show_sample_in_legend=show_sample,
+    )

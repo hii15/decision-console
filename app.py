@@ -5,6 +5,7 @@ from data_processing.loader import load_file, preprocess_installs, preprocess_ev
 from data_processing.ltv_calculator import calculate_d7_ltv
 from data_processing.daily_metrics import compute_daily_d7_metrics
 from data_processing.cohort_curve import compute_ltv_curve
+from data_processing.quality import compute_data_quality_metrics
 
 from decision.decision_engine import run_decision_engine
 from visualization.decision_table import style_decision_table
@@ -32,6 +33,24 @@ if not installs_file or not events_file:
 installs_df = preprocess_installs(load_file(installs_file), generate_cost_if_missing=True)
 events_df = preprocess_events(load_file(events_file))
 st.success("Files Loaded Successfully")
+
+with st.expander("Data Quality Diagnostics", expanded=False):
+    dq = compute_data_quality_metrics(installs_df, events_df)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Installs rows", f"{dq['installs_rows']:,}")
+    c2.metric("Events rows", f"{dq['events_rows']:,}")
+    c3.metric("Event ID match rate", f"{dq['event_id_match_rate'] * 100:.1f}%")
+    c4.metric("Purchase coverage", f"{dq['purchase_event_coverage'] * 100:.1f}%")
+
+    dqc1, dqc2 = st.columns(2)
+    dqc1.write(
+        f"- installs invalid timestamp: {dq['installs_invalid_ts']:,} "
+        f"({dq['installs_invalid_ts_rate'] * 100:.1f}%)"
+    )
+    dqc2.write(
+        f"- events invalid timestamp: {dq['events_invalid_ts']:,} "
+        f"({dq['events_invalid_ts_rate'] * 100:.1f}%)"
+    )
 
 base_target = st.number_input(
     "Base Target D7 ROAS (예: 1.0 = 100%)",

@@ -29,7 +29,7 @@ def load_file(uploaded_file):
 
 def preprocess_installs(
     df: pd.DataFrame,
-    generate_cost_if_missing: bool = True,
+    generate_cost_if_missing: bool = False,
     convert_utc_to_kst: bool = True,
     **kwargs,
 ) -> pd.DataFrame:
@@ -75,10 +75,13 @@ def preprocess_installs(
             noise = rng.normal(0, 0.6, size=len(df))
             cpi = np.clip(cpi + noise, 0, None)
             df["cost"] = cpi
+            df["cost_source"] = "synthetic"
         else:
             df["cost"] = 0.0
+            df["cost_source"] = "missing_default_zero"
     else:
         df["cost"] = pd.to_numeric(df["cost"], errors="coerce").fillna(0.0)
+        df["cost_source"] = "uploaded"
 
     if "appsflyer_id" not in df.columns:
         df["appsflyer_id"] = df.index.astype(str)

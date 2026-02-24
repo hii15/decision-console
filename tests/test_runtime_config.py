@@ -50,6 +50,11 @@ class RuntimeConfigTests(unittest.TestCase):
         cfg = load_runtime_config(payload)
         self.assertEqual(cfg.decision_rules[0]["conditions"]["country"], "KR")
 
+    def test_load_runtime_config_min_installs_override(self):
+        payload = io.StringIO('{"min_installs_for_scale":150}')
+        cfg = load_runtime_config(payload)
+        self.assertEqual(cfg.min_installs_for_scale, 150)
+
     def test_rule_changelog_has_current_engine_version(self):
         from decision.decision_engine import ENGINE_VERSION
         self.assertIn(ENGINE_VERSION, RULE_CHANGELOG)

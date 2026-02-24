@@ -14,7 +14,7 @@ class DecisionAndLTVTests(unittest.TestCase):
                 "appsflyer_id": ["u1", "u2", "u3"],
                 "media_source": ["facebook", "googleadwords_int", "facebook"],
                 "campaign": ["c1", "c2", "c1"],
-                "install_time": pd.to_datetime(["2026-01-01", "2026-01-01", "2026-01-02"]),
+                "install_time": pd.to_datetime(["2026-01-01", "2026-01-01", "2026-01-10"]),
                 "cost": [10.0, 20.0, 10.0],
             }
         )
@@ -33,8 +33,8 @@ class DecisionAndLTVTests(unittest.TestCase):
         row_c2 = out[(out["media_source"] == "googleadwords_int") & (out["campaign"] == "c2")].iloc[0]
 
         self.assertAlmostEqual(row_c1["d7_revenue"], 15.0)
-        self.assertAlmostEqual(row_c1["cost"], 20.0)
-        self.assertAlmostEqual(row_c1["d7_roas"], 0.75)
+        self.assertAlmostEqual(row_c1["cost"], 10.0)
+        self.assertAlmostEqual(row_c1["d7_roas"], 1.5)
         self.assertAlmostEqual(row_c2["d7_revenue"], 5.0)
 
     def test_run_decision_engine_applies_rule_thresholds(self):
@@ -99,6 +99,38 @@ class DecisionAndLTVTests(unittest.TestCase):
         self.assertEqual(events.loc[0, "event_time"].hour, 9)
 
 
+
+    def test_run_decision_engine_guards_scale_for_low_volume(self):
+        base = pd.DataFrame(
+            {
+                "media_source": ["facebook"],
+                "campaign": ["c1"],
+                "d7_roas": [1.5],
+                "installs": [20],
+                "cost": [100.0],
+            }
+        )
+        out = run_decision_engine(
+            base,
+            channel_map={"facebook": "Performance"},
+            base_target=1.0,
+            min_installs_for_scale=100,
+        )
+        self.assertEqual(out.loc[0, "decision"], "Test")
+
+    def test_run_decision_engine_returns_na_for_zero_cost(self):
+        base = pd.DataFrame(
+            {
+                "media_source": ["organic"],
+                "campaign": ["org"],
+                "d7_roas": [0.0],
+                "installs": [1000],
+                "cost": [0.0],
+            }
+        )
+        out = run_decision_engine(base, channel_map={"organic": "Performance"}, base_target=1.0)
+        self.assertEqual(out.loc[0, "decision"], "N/A")
+
     def test_run_decision_engine_rule_conditions(self):
         base = pd.DataFrame(
             {
@@ -120,6 +152,27 @@ class DecisionAndLTVTests(unittest.TestCase):
         )
         self.assertEqual(out.loc[0, "decision"], "Scale")
         self.assertEqual(out.loc[1, "decision"], "Test")
+
+
+    def test_calculate_d7_ltv_maturity_columns(self):
+        out = calculate_d7_ltv(self.installs, self.events, min_maturity_days=7)
+        self.assertIn("installs_total", out.columns)
+        self.assertIn("mature_ratio", out.columns)
+        row_c1 = out[(out["media_source"] == "facebook") & (out["campaign"] == "c1")].iloc[0]
+        self.assertAlmostEqual(row_c1["installs_total"], 2)
+        self.assertAlmostEqual(row_c1["installs"], 1)
+        self.assertAlmostEqual(row_c1["mature_ratio"], 0.5)
+
+    def test_loader_missing_cost_defaults_to_zero_with_source_flag(self):
+        installs_raw = pd.DataFrame({
+            "appsflyer_id": ["u1"],
+            "install_time_utc": ["2026-01-01 00:00:00"],
+            "media_source": ["facebook"],
+            "campaign": ["c1"],
+        })
+        installs = preprocess_installs(installs_raw)
+        self.assertEqual(float(installs.loc[0, "cost"]), 0.0)
+        self.assertEqual(installs.loc[0, "cost_source"], "missing_default_zero")
 
     def test_quality_metrics(self):
         installs = self.installs.copy()

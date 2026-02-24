@@ -26,6 +26,33 @@ def _to_csv_bytes(df: pd.DataFrame) -> bytes:
     return df.to_csv(index=False).encode("utf-8-sig")
 
 
+@st.cache_data(show_spinner=False)
+def _cached_d7_ltv(installs: pd.DataFrame, events: pd.DataFrame, min_maturity_days: int) -> pd.DataFrame:
+    return calculate_d7_ltv(installs, events, min_maturity_days=min_maturity_days)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_daily(installs: pd.DataFrame, events: pd.DataFrame, level: str) -> pd.DataFrame:
+    return compute_daily_d7_metrics(installs, events, level=level)
+
+
+@st.cache_data(show_spinner=False)
+def _cached_curve(installs: pd.DataFrame, events: pd.DataFrame, level: str, day_points: tuple, lookback_days):
+    return compute_ltv_curve(
+        installs, events, level=level, day_points=day_points, lookback_days=lookback_days, purchase_event_name="af_purchase"
+    )
+
+
+@st.cache_data(show_spinner=False)
+def _cached_payback(installs: pd.DataFrame, events: pd.DataFrame, level: str, max_day: int) -> pd.DataFrame:
+    return compute_payback_days(installs, events, level=level, max_day=max_day, purchase_event_name="af_purchase")
+
+
+@st.cache_data(show_spinner=False)
+def _cached_momentum(daily_df: pd.DataFrame) -> pd.DataFrame:
+    return compute_momentum_metrics(daily_df)
+
+
 st.set_page_config(layout="wide")
 st.title("UA 의사결정 지원 콘솔")
 st.markdown("---")
@@ -47,7 +74,7 @@ if not installs_file or not events_file:
 
 runtime_cfg = load_runtime_config(config_file)
 
-installs_df = preprocess_installs(load_file(installs_file), generate_cost_if_missing=True)
+installs_df = preprocess_installs(load_file(installs_file))
 events_df = preprocess_events(load_file(events_file))
 
 if cost_file is not None:
@@ -55,6 +82,9 @@ if cost_file is not None:
     st.success("파일 로드 완료 + Cost Report 조인 적용")
 else:
     st.success("파일 로드 완료")
+
+if "cost_source" in installs_df.columns and (installs_df["cost_source"] == "missing_default_zero").any():
+    st.warning("⚠️ cost 컬럼이 없어 cost=0으로 처리되었습니다. 현재 ROAS/의사결정은 보수적으로 해석해 주세요.")
 
 
 # 전역 필터
@@ -134,17 +164,35 @@ base_target = st.number_input(
 )
 
 st.markdown("## 채널 타입 설정")
-unique_sources = list(installs_df["media_source"].unique())
+unique_sources = sorted(list(installs_df["media_source"].astype(str).dropna().unique()))
+channel_defaults = [runtime_cfg.channel_map.get(source, DEFAULT_CHANNEL_MAP.get(source, "Performance")) for source in unique_sources]
 
-channel_map = {}
-for source in unique_sources:
-    default_type = runtime_cfg.channel_map.get(source, DEFAULT_CHANNEL_MAP.get(source, "Performance"))
-    channel_type = st.selectbox(
-        f"{source}",
-        ["Performance", "Hybrid", "Branding"],
-        index=["Performance", "Hybrid", "Branding"].index(default_type)
+editor_df = pd.DataFrame({"media_source": unique_sources, "channel_type": channel_defaults})
+edited_channel_df = st.data_editor(
+    editor_df,
+    width="stretch",
+    hide_index=True,
+    column_config={
+        "channel_type": st.column_config.SelectboxColumn(
+            "channel_type",
+            options=["Performance", "Hybrid", "Branding"],
+            required=True,
+        )
+    },
+    key="channel_map_editor",
+)
+channel_map = dict(zip(edited_channel_df["media_source"], edited_channel_df["channel_type"]))
+
+settings_col1, settings_col2 = st.columns(2)
+with settings_col1:
+    min_maturity_days = st.number_input("D7 계산 최소 코호트 성숙일", min_value=0, value=7, step=1)
+with settings_col2:
+    min_installs_for_scale = st.number_input(
+        "Scale 최소 installs",
+        min_value=1,
+        value=int(runtime_cfg.min_installs_for_scale),
+        step=10,
     )
-    channel_map[source] = channel_type
 
 st.markdown("---")
 
@@ -153,7 +201,7 @@ tab1, tab2, tab3 = st.tabs(["의사결정", "리스크 히트맵", "LTV 커브"]
 
 # ====== Decision View ======
 with tab1:
-    result_df = calculate_d7_ltv(installs_df, events_df)
+    result_df = _cached_d7_ltv(installs_df, events_df, int(min_maturity_days))
     final_df = run_decision_engine(
         result_df,
         channel_map,
@@ -161,11 +209,30 @@ with tab1:
         multiplier_map=runtime_cfg.multiplier_map,
         decision_rules=runtime_cfg.decision_rules,
         fallback_decision=runtime_cfg.fallback_decision,
+        min_installs_for_scale=int(min_installs_for_scale),
     )
 
     st.markdown("## 의사결정 테이블")
     st.caption("포트폴리오 관점: 채널별 D7 성과와 목표 대비 갭을 바탕으로 예산 증액/테스트/축소 우선순위를 빠르게 확인합니다.")
     st.caption(f"Engine version: {ENGINE_VERSION}")
+    if "mature_ratio" in final_df.columns:
+        st.caption(f"D7 성숙 코호트 비율 평균: {final_df['mature_ratio'].mean() * 100:.1f}%")
+
+    payback_for_decision = _cached_payback(installs_df, events_df, level="media_source", max_day=30)
+    payback_for_decision = payback_for_decision.rename(columns={"level_key": "media_source"})[["media_source", "payback_day"]]
+
+    daily_for_decision = _cached_daily(installs_df, events_df, level="media_source")
+    momentum_for_decision = _cached_momentum(daily_for_decision)
+    momentum_latest = (
+        momentum_for_decision.sort_values(["level_key", "install_date"])
+        .groupby("level_key", as_index=False)
+        .tail(1)[["level_key", "roas_ma3", "roas_dod"]]
+        .rename(columns={"level_key": "media_source"})
+    )
+
+    final_df = final_df.merge(payback_for_decision, on="media_source", how="left")
+    final_df = final_df.merge(momentum_latest, on="media_source", how="left")
+
     st.write(style_decision_table(final_df))
 
     with st.expander("룰 버전 changelog", expanded=False):
@@ -200,13 +267,7 @@ with tab1:
     )
     payback_max_day = st.number_input("페이백 최대 탐색일", min_value=7, value=30, step=1, key="pb_max_day")
 
-    payback_df = compute_payback_days(
-        installs_df,
-        events_df,
-        level=payback_level,
-        max_day=int(payback_max_day),
-        purchase_event_name="af_purchase",
-    )
+    payback_df = _cached_payback(installs_df, events_df, level=payback_level, max_day=int(payback_max_day))
     payback_show = payback_df.copy()
     payback_show["payback_day"] = payback_show["payback_day"].apply(
         lambda x: "미도달" if pd.isna(x) else str(int(x))
@@ -256,7 +317,7 @@ with tab2:
         with m2:
             min_cost = st.number_input("셀당 최소 cost", min_value=0.0, value=50.0, step=10.0, key="hm_min_cost")
 
-    daily_df = compute_daily_d7_metrics(installs_df, events_df, level=level)
+    daily_df = _cached_daily(installs_df, events_df, level=level)
     daily_df["install_date"] = pd.to_datetime(daily_df["install_date"])
     max_date = daily_df["install_date"].max()
 
@@ -292,7 +353,7 @@ with tab2:
     )
 
     st.markdown("## 트렌드 / MA3 (D7 ROAS)")
-    momentum_df = compute_momentum_metrics(daily_df)
+    momentum_df = _cached_momentum(daily_df)
 
     trend_keys = sorted(momentum_df["level_key"].unique().tolist())
     trend_default = trend_keys[: min(5, len(trend_keys))]
@@ -384,19 +445,22 @@ with tab3:
     with opt3:
         n_high = st.number_input("진하게 임계값 (high N)", min_value=10, value=800, step=50, key="cv_nhigh")
 
-    day_points = (0, 1, 3, 7)
+    day_points_input = st.text_input("커브 day_points (콤마 구분)", value="0,1,3,7")
+    day_points = tuple(sorted({int(x.strip()) for x in day_points_input.split(",") if x.strip().isdigit()}))
+    if not day_points:
+        st.warning("유효한 day_points가 없어 기본값 (0,1,3,7)을 사용합니다.")
+        day_points = (0, 1, 3, 7)
 
     lookback_days = None
     if curve_range != "All":
         lookback_days = int(re.search(r"\d+", curve_range).group())
 
-    curve_df = compute_ltv_curve(
+    curve_df = _cached_curve(
         installs_df,
         events_df,
         level=curve_level,
         day_points=day_points,
         lookback_days=lookback_days,
-        purchase_event_name="af_purchase",
     )
 
     if curve_df.empty:

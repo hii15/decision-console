@@ -19,7 +19,16 @@ def _match_conditions(row, conditions: dict | None) -> bool:
     return True
 
 
-def run_decision_engine(df, channel_map, base_target, multiplier_map=None, decision_rules=None, fallback_decision=None):
+def run_decision_engine(
+    df,
+    channel_map,
+    base_target,
+    multiplier_map=None,
+    decision_rules=None,
+    fallback_decision=None,
+    min_installs_for_scale=100,
+    zero_cost_decision="N/A",
+):
     """
     Deterministic decision engine
     - channel_type -> multiplier -> adjusted_target_roas
@@ -38,6 +47,9 @@ def run_decision_engine(df, channel_map, base_target, multiplier_map=None, decis
     fallback = fallback_decision if fallback_decision is not None else DEFAULT_FALLBACK_DECISION
 
     def rule(row):
+        if "cost" in row and float(row.get("cost", 0.0)) <= 0:
+            return zero_cost_decision
+
         ratio = row["d7_roas"] / row["adjusted_target_roas"] if row["adjusted_target_roas"] > 0 else 0.0
         for r in rules:
             threshold = float(r.get("threshold", 1.0))
@@ -49,6 +61,10 @@ def run_decision_engine(df, channel_map, base_target, multiplier_map=None, decis
                 continue
 
             if (op == ">=" and ratio >= threshold) or (op == ">" and ratio > threshold):
+                if decision_label == "Scale" and "installs" in row:
+                    installs = float(row.get("installs", 0.0))
+                    if installs < float(min_installs_for_scale):
+                        return "Test"
                 return decision_label
         return fallback
 

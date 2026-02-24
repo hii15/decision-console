@@ -13,6 +13,7 @@ class RuntimeConfig:
     multiplier_map: dict
     decision_rules: list
     fallback_decision: str
+    min_installs_for_scale: int
 
 
 def load_runtime_config(config_file) -> RuntimeConfig:
@@ -24,6 +25,7 @@ def load_runtime_config(config_file) -> RuntimeConfig:
             multiplier_map=DEFAULT_MULTIPLIER.copy(),
             decision_rules=[r.copy() for r in DEFAULT_DECISION_RULES],
             fallback_decision=DEFAULT_FALLBACK_DECISION,
+            min_installs_for_scale=100,
         )
 
     payload = json.load(config_file)
@@ -65,6 +67,7 @@ def load_runtime_config(config_file) -> RuntimeConfig:
         )
 
     fallback_decision = str(payload.get("fallback_decision", DEFAULT_FALLBACK_DECISION))
+    min_installs_for_scale = int(payload.get("min_installs_for_scale", 100))
 
     return RuntimeConfig(
         base_target=base_target,
@@ -72,4 +75,5 @@ def load_runtime_config(config_file) -> RuntimeConfig:
         multiplier_map=multiplier_map,
         decision_rules=normalized_rules,
         fallback_decision=fallback_decision,
+        min_installs_for_scale=min_installs_for_scale,
     )

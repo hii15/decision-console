@@ -18,6 +18,7 @@ from visualization.ltv_curve import show_ltv_curve
 
 from config.channel_config import DEFAULT_CHANNEL_MAP
 from config.runtime_config import load_runtime_config
+from config.rule_changelog import RULE_CHANGELOG
 
 
 def _to_csv_bytes(df: pd.DataFrame) -> bytes:
@@ -127,6 +128,18 @@ with tab1:
     st.caption("포트폴리오 관점: 채널별 D7 성과와 목표 대비 갭을 바탕으로 예산 증액/테스트/축소 우선순위를 빠르게 확인합니다.")
     st.caption(f"Engine version: {ENGINE_VERSION}")
     st.write(style_decision_table(final_df))
+
+    with st.expander("룰 버전 changelog", expanded=False):
+        current = RULE_CHANGELOG.get(ENGINE_VERSION)
+        if current is None:
+            st.warning(f"{ENGINE_VERSION} 버전의 changelog가 등록되어 있지 않습니다.")
+        else:
+            st.write(f"- 현재 버전: **{ENGINE_VERSION}**")
+            st.write(f"- 반영일: {current['date']}")
+            st.write(f"- 요약: {current['summary']}")
+            st.write("- 규칙 변경 사항:")
+            for rule_line in current["rules"]:
+                st.write(f"  - {rule_line}")
 
     st.download_button(
         "의사결정 CSV 다운로드",

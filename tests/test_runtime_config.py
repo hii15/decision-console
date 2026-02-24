@@ -4,6 +4,7 @@ import unittest
 import pandas as pd
 
 from config.runtime_config import load_runtime_config
+from config.rule_changelog import RULE_CHANGELOG
 from decision.decision_engine import run_decision_engine
 
 
@@ -48,6 +49,11 @@ class RuntimeConfigTests(unittest.TestCase):
         )
         cfg = load_runtime_config(payload)
         self.assertEqual(cfg.decision_rules[0]["conditions"]["country"], "KR")
+
+    def test_rule_changelog_has_current_engine_version(self):
+        from decision.decision_engine import ENGINE_VERSION
+        self.assertIn(ENGINE_VERSION, RULE_CHANGELOG)
+
 
 if __name__ == "__main__":
     unittest.main()

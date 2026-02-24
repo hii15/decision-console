@@ -1,0 +1,5 @@
+appsflyer_id,event_time_utc,event_name,af_revenue_usd
+u1,2026-01-01 12:00:00,af_purchase,5
+u2,2026-01-04 00:00:00,af_purchase,12
+u3,2026-01-11 00:00:00,af_purchase,9
+uX,2026-01-02 00:00:00,af_purchase,100

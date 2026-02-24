@@ -1,0 +1,4 @@
+appsflyer_id,install_time_utc,media_source,campaign,cost
+u1,2026-01-01 00:00:00,facebook,c1,10
+u2,2026-01-02 00:00:00,googleadwords_int,c2,20
+u3,2026-01-03 00:00:00,tiktok_int,c3,8

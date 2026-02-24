@@ -7,6 +7,7 @@ from data_processing.daily_metrics import compute_daily_d7_metrics
 from data_processing.cohort_curve import compute_ltv_curve
 from data_processing.quality import compute_data_quality_metrics
 from data_processing.payback import compute_payback_days
+from data_processing.momentum import compute_momentum_metrics
 
 from decision.decision_engine import run_decision_engine
 from visualization.decision_table import style_decision_table
@@ -198,6 +199,54 @@ with tab2:
         file_name="heatmap_daily_metrics.csv",
         mime="text/csv",
         key="dl_heatmap",
+    )
+
+    st.markdown("## Trend / MA3 (D7 ROAS)")
+    momentum_df = compute_momentum_metrics(daily_df)
+
+    trend_keys = sorted(momentum_df["level_key"].unique().tolist())
+    trend_default = trend_keys[: min(5, len(trend_keys))]
+    selected_trend_keys = st.multiselect(
+        "Select trend series",
+        options=trend_keys,
+        default=trend_default,
+        key="trend_keys",
+    )
+
+    if selected_trend_keys:
+        trend_plot = momentum_df[momentum_df["level_key"].isin(selected_trend_keys)].copy()
+        st.line_chart(
+            trend_plot.pivot_table(
+                index="install_date",
+                columns="level_key",
+                values="d7_roas",
+                aggfunc="mean",
+            )
+        )
+        st.line_chart(
+            trend_plot.pivot_table(
+                index="install_date",
+                columns="level_key",
+                values="roas_ma3",
+                aggfunc="mean",
+            )
+        )
+
+        latest = (
+            trend_plot.sort_values(["level_key", "install_date"])
+            .groupby("level_key", as_index=False)
+            .tail(1)
+            .loc[:, ["level_key", "install_date", "d7_roas", "roas_ma3", "roas_dod"]]
+            .sort_values("d7_roas", ascending=False)
+        )
+        st.dataframe(latest, use_container_width=True)
+
+    st.download_button(
+        "Download Trend CSV",
+        data=_to_csv_bytes(momentum_df),
+        file_name="trend_momentum.csv",
+        mime="text/csv",
+        key="dl_trend",
     )
 
 # ====== LTV Curve ======

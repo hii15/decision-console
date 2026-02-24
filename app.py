@@ -10,6 +10,7 @@ from data_processing.quality import compute_data_quality_metrics
 from data_processing.payback import compute_payback_days
 from data_processing.momentum import compute_momentum_metrics
 from data_processing.cost_join import apply_cost_report
+from data_processing.filters import apply_global_filters
 
 from decision.decision_engine import run_decision_engine, ENGINE_VERSION
 from visualization.decision_table import style_decision_table
@@ -54,6 +55,44 @@ if cost_file is not None:
     st.success("파일 로드 완료 + Cost Report 조인 적용")
 else:
     st.success("파일 로드 완료")
+
+
+# 전역 필터
+with st.expander("전역 필터", expanded=False):
+    f1, f2, f3 = st.columns([1, 1, 2])
+
+    source_options = sorted(installs_df["media_source"].astype(str).dropna().unique().tolist())
+    campaign_options = sorted(installs_df["campaign"].astype(str).dropna().unique().tolist())
+
+    with f1:
+        selected_sources = st.multiselect("미디어 소스", options=source_options, default=source_options, key="gf_sources")
+    with f2:
+        selected_campaigns = st.multiselect("캠페인", options=campaign_options, default=campaign_options, key="gf_campaigns")
+    with f3:
+        dmin = pd.to_datetime(installs_df["install_date"], errors="coerce").min()
+        dmax = pd.to_datetime(installs_df["install_date"], errors="coerce").max()
+        selected_range = st.date_input("설치일 범위", value=(dmin, dmax), min_value=dmin, max_value=dmax, key="gf_range")
+
+    if isinstance(selected_range, tuple) and len(selected_range) == 2:
+        start_date, end_date = selected_range
+    else:
+        start_date = dmin
+        end_date = dmax
+
+installs_df, events_df = apply_global_filters(
+    installs_df,
+    events_df,
+    selected_sources=selected_sources if len(selected_sources) > 0 else None,
+    selected_campaigns=selected_campaigns if len(selected_campaigns) > 0 else None,
+    start_date=start_date,
+    end_date=end_date,
+)
+
+st.caption(f"필터 적용 결과: installs {len(installs_df):,}건 / events {len(events_df):,}건")
+
+if installs_df.empty:
+    st.warning("필터 조건에 맞는 installs 데이터가 없습니다. 전역 필터를 조정해 주세요.")
+    st.stop()
 
 with st.expander("데이터 품질 진단", expanded=False):
     dq = compute_data_quality_metrics(installs_df, events_df)

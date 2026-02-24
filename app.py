@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re
 
 from data_processing.loader import load_file, preprocess_installs, preprocess_events
 from data_processing.ltv_calculator import calculate_d7_ltv
@@ -8,6 +9,7 @@ from data_processing.cohort_curve import compute_ltv_curve
 from data_processing.quality import compute_data_quality_metrics
 from data_processing.payback import compute_payback_days
 from data_processing.momentum import compute_momentum_metrics
+from data_processing.cost_join import apply_cost_report
 
 from decision.decision_engine import run_decision_engine, ENGINE_VERSION
 from visualization.decision_table import style_decision_table
@@ -23,27 +25,33 @@ def _to_csv_bytes(df: pd.DataFrame) -> bytes:
 
 
 st.set_page_config(layout="wide")
-st.title("UA Decision Support Console")
+st.title("UA 의사결정 지원 콘솔")
 st.markdown("---")
 
 # 업로드
 col1, col2 = st.columns(2)
 with col1:
-    installs_file = st.file_uploader("Upload Installs Raw (CSV/XLSX)", type=["csv", "xlsx"])
+    installs_file = st.file_uploader("인스톨 Raw 업로드 (CSV/XLSX)", type=["csv", "xlsx"])
 with col2:
-    events_file = st.file_uploader("Upload Events Raw (CSV/XLSX)", type=["csv", "xlsx"])
+    events_file = st.file_uploader("이벤트 Raw 업로드 (CSV/XLSX)", type=["csv", "xlsx"])
 
-config_file = st.file_uploader("(Optional) Runtime Config JSON", type=["json"])
+config_file = st.file_uploader("(선택) Runtime 설정 JSON", type=["json"])
+cost_file = st.file_uploader("(선택) Cost Report 업로드 (CSV/XLSX)", type=["csv", "xlsx"])
 
 if not installs_file or not events_file:
-    st.info("Please upload both installs and events files.")
+    st.info("인스톨/이벤트 파일을 모두 업로드해 주세요.")
     st.stop()
 
 runtime_cfg = load_runtime_config(config_file)
 
 installs_df = preprocess_installs(load_file(installs_file), generate_cost_if_missing=True)
 events_df = preprocess_events(load_file(events_file))
-st.success("Files Loaded Successfully")
+
+if cost_file is not None:
+    installs_df = apply_cost_report(installs_df, load_file(cost_file))
+    st.success("파일 로드 완료 + Cost Report 조인 적용")
+else:
+    st.success("파일 로드 완료")
 
 with st.expander("Data Quality Diagnostics", expanded=False):
     dq = compute_data_quality_metrics(installs_df, events_df)
@@ -64,13 +72,13 @@ with st.expander("Data Quality Diagnostics", expanded=False):
     )
 
 base_target = st.number_input(
-    "Base Target D7 ROAS (예: 1.0 = 100%)",
+    "기준 Target D7 ROAS (예: 1.0 = 100%)",
     min_value=0.0,
     value=float(runtime_cfg.base_target) if runtime_cfg.base_target is not None else 1.0,
     step=0.05
 )
 
-st.markdown("## Channel Type Configuration")
+st.markdown("## 채널 타입 설정")
 unique_sources = list(installs_df["media_source"].unique())
 
 channel_map = {}
@@ -86,36 +94,37 @@ for source in unique_sources:
 st.markdown("---")
 
 # ====== Tabs ======
-tab1, tab2, tab3 = st.tabs(["Decision View", "Risk Heatmap", "LTV Curve"])
+tab1, tab2, tab3 = st.tabs(["의사결정", "리스크 히트맵", "LTV 커브"])
 
 # ====== Decision View ======
 with tab1:
     result_df = calculate_d7_ltv(installs_df, events_df)
     final_df = run_decision_engine(result_df, channel_map, base_target, multiplier_map=runtime_cfg.multiplier_map)
 
-    st.markdown("## Decision Table")
+    st.markdown("## 의사결정 테이블")
+    st.caption("포트폴리오 관점: 채널별 D7 성과와 목표 대비 갭을 바탕으로 예산 증액/테스트/축소 우선순위를 빠르게 확인합니다.")
     st.caption(f"Engine version: {ENGINE_VERSION}")
     st.write(style_decision_table(final_df))
 
     st.download_button(
-        "Download Decision CSV",
+        "의사결정 CSV 다운로드",
         data=_to_csv_bytes(final_df),
         file_name="decision_view.csv",
         mime="text/csv",
     )
 
-    st.markdown("## D7 ROAS by Media Source")
+    st.markdown("## 매체별 D7 ROAS")
     chart_df = final_df.groupby("media_source")["d7_roas"].mean().reset_index()
     st.bar_chart(chart_df.set_index("media_source"))
 
-    st.markdown("## Payback (v1)")
+    st.markdown("## 페이백 (v1)")
     payback_level = st.selectbox(
-        "Payback Level",
+        "페이백 레벨",
         ["media_source", "campaign", "media_source_campaign"],
         index=0,
         key="pb_level"
     )
-    payback_max_day = st.number_input("Payback max day", min_value=7, value=30, step=1, key="pb_max_day")
+    payback_max_day = st.number_input("페이백 최대 탐색일", min_value=7, value=30, step=1, key="pb_max_day")
 
     payback_df = compute_payback_days(
         installs_df,
@@ -126,19 +135,20 @@ with tab1:
     )
     payback_show = payback_df.copy()
     payback_show["payback_day"] = payback_show["payback_day"].apply(
-        lambda x: "Not reached" if pd.isna(x) else str(int(x))
+        lambda x: "미도달" if pd.isna(x) else str(int(x))
     )
     st.dataframe(payback_show, width="stretch")
 
 # ====== Risk Heatmap ======
 with tab2:
-    st.markdown("## Risk Heatmap (Install Cohort 기반)")
+    st.markdown("## 리스크 히트맵 (Install Cohort 기반)")
+    st.caption("포트폴리오 관점: 날짜×레벨 셀 단위로 리스크 구간을 시각화해, 변동성이 큰 구간을 빠르게 탐지합니다.")
 
     c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
 
     with c1:
         level = st.selectbox(
-            "Heatmap Level",
+            "히트맵 레벨",
             ["media_source", "campaign", "media_source_campaign"],
             index=0,
             key="hm_level"
@@ -146,7 +156,7 @@ with tab2:
 
     with c2:
         metric = st.selectbox(
-            "Metric",
+            "지표",
             ["d7_roas", "cost", "installs", "d7_revenue"],
             index=0,
             key="hm_metric"
@@ -154,30 +164,30 @@ with tab2:
 
     with c3:
         lookback = st.selectbox(
-            "Date Range",
-            ["Last 14 days", "Last 30 days", "Last 60 days", "All"],
+            "조회 기간",
+            ["최근 14일", "최근 30일", "최근 60일", "All"],
             index=1,
             key="hm_range"
         )
 
     with c4:
-        enable_mask = st.checkbox("Mask low volume cells", value=True, key="hm_mask")
+        enable_mask = st.checkbox("저볼륨 셀 마스킹", value=True, key="hm_mask")
 
     min_installs = None
     min_cost = None
     if enable_mask:
         m1, m2 = st.columns(2)
         with m1:
-            min_installs = st.number_input("Min installs per cell", min_value=0, value=30, step=10, key="hm_min_inst")
+            min_installs = st.number_input("셀당 최소 installs", min_value=0, value=30, step=10, key="hm_min_inst")
         with m2:
-            min_cost = st.number_input("Min cost per cell", min_value=0.0, value=50.0, step=10.0, key="hm_min_cost")
+            min_cost = st.number_input("셀당 최소 cost", min_value=0.0, value=50.0, step=10.0, key="hm_min_cost")
 
     daily_df = compute_daily_d7_metrics(installs_df, events_df, level=level)
     daily_df["install_date"] = pd.to_datetime(daily_df["install_date"])
     max_date = daily_df["install_date"].max()
 
     if lookback != "All":
-        days = int(lookback.split()[1])
+        days = int(re.search(r"\d+", lookback).group())
         start_date = max_date - pd.Timedelta(days=days - 1)
         daily_df = daily_df[daily_df["install_date"] >= start_date].copy()
 
@@ -200,20 +210,20 @@ with tab2:
     )
 
     st.download_button(
-        "Download Heatmap Source CSV",
+        "히트맵 소스 CSV 다운로드",
         data=_to_csv_bytes(daily_df),
         file_name="heatmap_daily_metrics.csv",
         mime="text/csv",
         key="dl_heatmap",
     )
 
-    st.markdown("## Trend / MA3 (D7 ROAS)")
+    st.markdown("## 트렌드 / MA3 (D7 ROAS)")
     momentum_df = compute_momentum_metrics(daily_df)
 
     trend_keys = sorted(momentum_df["level_key"].unique().tolist())
     trend_default = trend_keys[: min(5, len(trend_keys))]
     selected_trend_keys = st.multiselect(
-        "Select trend series",
+        "트렌드 시리즈 선택",
         options=trend_keys,
         default=trend_default,
         key="trend_keys",
@@ -248,7 +258,7 @@ with tab2:
         st.dataframe(latest, width="stretch")
 
     st.download_button(
-        "Download Trend CSV",
+        "트렌드 CSV 다운로드",
         data=_to_csv_bytes(momentum_df),
         file_name="trend_momentum.csv",
         mime="text/csv",
@@ -257,13 +267,14 @@ with tab2:
 
 # ====== LTV Curve ======
 with tab3:
-    st.markdown("## LTV / ROAS Curve (Install Cohort 누적)")
+    st.markdown("## LTV / ROAS 커브 (Install Cohort 누적)")
+    st.caption("포트폴리오 관점: 누적 수익/ROAS 곡선으로 채널의 회수 속도와 성장 잠재력을 비교합니다.")
 
     c1, c2, c3, c4, c5 = st.columns([1, 1, 1, 1, 1])
 
     with c1:
         curve_level = st.selectbox(
-            "Curve Level",
+            "커브 레벨",
             ["media_source", "campaign", "media_source_campaign"],
             index=0,
             key="cv_level"
@@ -271,7 +282,7 @@ with tab3:
 
     with c2:
         curve_metric = st.selectbox(
-            "Metric",
+            "지표",
             ["ltv", "roas", "revenue"],
             index=0,
             key="cv_metric"
@@ -279,31 +290,31 @@ with tab3:
 
     with c3:
         curve_range = st.selectbox(
-            "Install Cohort Range",
-            ["Last 14 days", "Last 30 days", "Last 60 days", "All"],
+            "코호트 조회 기간",
+            ["최근 14일", "최근 30일", "최근 60일", "All"],
             index=1,
             key="cv_range"
         )
 
     with c4:
-        top_n = st.number_input("Auto-select Top N", min_value=1, value=8, step=1, key="cv_topn")
+        top_n = st.number_input("자동 선택 Top N", min_value=1, value=8, step=1, key="cv_topn")
 
     with c5:
-        show_sample = st.checkbox("Show N/Cost in legend", value=True, key="cv_show_sample")
+        show_sample = st.checkbox("범례에 N/Cost 표시", value=True, key="cv_show_sample")
 
     opt1, opt2, opt3 = st.columns([1, 1, 1])
     with opt1:
-        fade_small = st.checkbox("Fade small samples", value=True, key="cv_fade")
+        fade_small = st.checkbox("소표본 흐리게", value=True, key="cv_fade")
     with opt2:
-        n_low = st.number_input("Fade threshold (low N)", min_value=1, value=50, step=10, key="cv_nlow")
+        n_low = st.number_input("흐림 임계값 (low N)", min_value=1, value=50, step=10, key="cv_nlow")
     with opt3:
-        n_high = st.number_input("Solid threshold (high N)", min_value=10, value=800, step=50, key="cv_nhigh")
+        n_high = st.number_input("진하게 임계값 (high N)", min_value=10, value=800, step=50, key="cv_nhigh")
 
     day_points = (0, 1, 3, 7)
 
     lookback_days = None
     if curve_range != "All":
-        lookback_days = int(curve_range.split()[1])
+        lookback_days = int(re.search(r"\d+", curve_range).group())
 
     curve_df = compute_ltv_curve(
         installs_df,
@@ -315,7 +326,7 @@ with tab3:
     )
 
     if curve_df.empty:
-        st.warning("No curve data. Try changing filters.")
+        st.warning("커브 데이터가 없습니다. 필터를 변경해 보세요.")
         st.stop()
 
     last_day = max(day_points)
@@ -330,20 +341,20 @@ with tab3:
     all_keys = sorted(curve_df["level_key"].unique().tolist())
 
     selected_keys = st.multiselect(
-        "Select series to compare",
+        "비교할 시리즈 선택",
         options=all_keys,
         default=default_keys,
         key="cv_keys"
     )
 
-    with st.expander("Series Summary (D7 기준)"):
+    with st.expander("시리즈 요약 (D7 기준)"):
         d_last = curve_df[curve_df["day"] == last_day].copy()
         d_last = d_last[d_last["level_key"].isin(selected_keys)].copy()
         show_cols = ["level_key", "installs", "cost", "revenue", "ltv", "roas"]
         st.dataframe(d_last[show_cols].sort_values(curve_metric, ascending=False), width="stretch")
 
     st.download_button(
-        "Download Curve CSV",
+        "커브 CSV 다운로드",
         data=_to_csv_bytes(curve_df),
         file_name="ltv_curve.csv",
         mime="text/csv",

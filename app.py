@@ -6,6 +6,7 @@ from data_processing.ltv_calculator import calculate_d7_ltv
 from data_processing.daily_metrics import compute_daily_d7_metrics
 from data_processing.cohort_curve import compute_ltv_curve
 from data_processing.quality import compute_data_quality_metrics
+from data_processing.payback import compute_payback_days
 
 from decision.decision_engine import run_decision_engine
 from visualization.decision_table import style_decision_table
@@ -13,6 +14,10 @@ from visualization.heatmap import show_risk_heatmap
 from visualization.ltv_curve import show_ltv_curve
 
 from config.channel_config import DEFAULT_CHANNEL_MAP
+
+
+def _to_csv_bytes(df: pd.DataFrame) -> bytes:
+    return df.to_csv(index=False).encode("utf-8-sig")
 
 
 st.set_page_config(layout="wide")
@@ -85,9 +90,38 @@ with tab1:
     st.markdown("## Decision Table")
     st.write(style_decision_table(final_df))
 
+    st.download_button(
+        "Download Decision CSV",
+        data=_to_csv_bytes(final_df),
+        file_name="decision_view.csv",
+        mime="text/csv",
+    )
+
     st.markdown("## D7 ROAS by Media Source")
     chart_df = final_df.groupby("media_source")["d7_roas"].mean().reset_index()
     st.bar_chart(chart_df.set_index("media_source"))
+
+    st.markdown("## Payback (v1)")
+    payback_level = st.selectbox(
+        "Payback Level",
+        ["media_source", "campaign", "media_source_campaign"],
+        index=0,
+        key="pb_level"
+    )
+    payback_max_day = st.number_input("Payback max day", min_value=7, value=30, step=1, key="pb_max_day")
+
+    payback_df = compute_payback_days(
+        installs_df,
+        events_df,
+        level=payback_level,
+        max_day=int(payback_max_day),
+        purchase_event_name="af_purchase",
+    )
+    payback_show = payback_df.copy()
+    payback_show["payback_day"] = payback_show["payback_day"].apply(
+        lambda x: "Not reached" if pd.isna(x) else str(int(x))
+    )
+    st.dataframe(payback_show, use_container_width=True)
 
 # ====== Risk Heatmap ======
 with tab2:
@@ -158,6 +192,14 @@ with tab2:
         min_cost=float(min_cost) if enable_mask else None,
     )
 
+    st.download_button(
+        "Download Heatmap Source CSV",
+        data=_to_csv_bytes(daily_df),
+        file_name="heatmap_daily_metrics.csv",
+        mime="text/csv",
+        key="dl_heatmap",
+    )
+
 # ====== LTV Curve ======
 with tab3:
     st.markdown("## LTV / ROAS Curve (Install Cohort 누적)")
@@ -194,7 +236,6 @@ with tab3:
     with c5:
         show_sample = st.checkbox("Show N/Cost in legend", value=True, key="cv_show_sample")
 
-    # 추가 옵션: 모수 기반 흐리게
     opt1, opt2, opt3 = st.columns([1, 1, 1])
     with opt1:
         fade_small = st.checkbox("Fade small samples", value=True, key="cv_fade")
@@ -246,9 +287,15 @@ with tab3:
         show_cols = ["level_key", "installs", "cost", "revenue", "ltv", "roas"]
         st.dataframe(d_last[show_cols].sort_values(curve_metric, ascending=False), use_container_width=True)
 
-    title = f"Cumulative Curve ({curve_level}) - days={list(day_points)}"
+    st.download_button(
+        "Download Curve CSV",
+        data=_to_csv_bytes(curve_df),
+        file_name="ltv_curve.csv",
+        mime="text/csv",
+        key="dl_curve",
+    )
 
-    # ✅ ROAS일 때만 target 라인 표시
+    title = f"Cumulative Curve ({curve_level}) - days={list(day_points)}"
     target_line = base_target if curve_metric == "roas" else None
 
     show_ltv_curve(

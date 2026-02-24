@@ -9,7 +9,7 @@ from data_processing.quality import compute_data_quality_metrics
 from data_processing.payback import compute_payback_days
 from data_processing.momentum import compute_momentum_metrics
 
-from decision.decision_engine import run_decision_engine
+from decision.decision_engine import run_decision_engine, ENGINE_VERSION
 from visualization.decision_table import style_decision_table
 from visualization.heatmap import show_risk_heatmap
 from visualization.ltv_curve import show_ltv_curve
@@ -89,6 +89,7 @@ with tab1:
     final_df = run_decision_engine(result_df, channel_map, base_target)
 
     st.markdown("## Decision Table")
+    st.caption(f"Engine version: {ENGINE_VERSION}")
     st.write(style_decision_table(final_df))
 
     st.download_button(
@@ -122,7 +123,7 @@ with tab1:
     payback_show["payback_day"] = payback_show["payback_day"].apply(
         lambda x: "Not reached" if pd.isna(x) else str(int(x))
     )
-    st.dataframe(payback_show, use_container_width=True)
+    st.dataframe(payback_show, width="stretch")
 
 # ====== Risk Heatmap ======
 with tab2:
@@ -239,7 +240,7 @@ with tab2:
             .loc[:, ["level_key", "install_date", "d7_roas", "roas_ma3", "roas_dod"]]
             .sort_values("d7_roas", ascending=False)
         )
-        st.dataframe(latest, use_container_width=True)
+        st.dataframe(latest, width="stretch")
 
     st.download_button(
         "Download Trend CSV",
@@ -334,7 +335,7 @@ with tab3:
         d_last = curve_df[curve_df["day"] == last_day].copy()
         d_last = d_last[d_last["level_key"].isin(selected_keys)].copy()
         show_cols = ["level_key", "installs", "cost", "revenue", "ltv", "roas"]
-        st.dataframe(d_last[show_cols].sort_values(curve_metric, ascending=False), use_container_width=True)
+        st.dataframe(d_last[show_cols].sort_values(curve_metric, ascending=False), width="stretch")
 
     st.download_button(
         "Download Curve CSV",

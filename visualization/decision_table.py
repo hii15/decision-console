@@ -26,4 +26,4 @@ def style_decision_table(df):
             return "background-color: #d9534f; color: white;"
         return ""
 
-    return display_df.style.applymap(highlight, subset=["decision"])
+    return display_df.style.map(highlight, subset=["decision"])

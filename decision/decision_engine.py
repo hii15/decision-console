@@ -1,6 +1,9 @@
 from config.target_config import DEFAULT_MULTIPLIER
 
 
+ENGINE_VERSION = "deterministic_v1.1"
+
+
 def run_decision_engine(df, channel_map, base_target):
     """
     Deterministic decision engine v1
@@ -23,5 +26,6 @@ def run_decision_engine(df, channel_map, base_target):
         return "Reduce"
 
     out["decision"] = out.apply(rule, axis=1)
+    out["engine_version"] = ENGINE_VERSION
 
     return out

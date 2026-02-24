@@ -2,7 +2,7 @@ import unittest
 import pandas as pd
 
 from data_processing.ltv_calculator import calculate_d7_ltv
-from decision.decision_engine import run_decision_engine
+from decision.decision_engine import run_decision_engine, ENGINE_VERSION
 from data_processing.quality import compute_data_quality_metrics
 
 
@@ -53,6 +53,7 @@ class DecisionAndLTVTests(unittest.TestCase):
         self.assertEqual(out.loc[0, "decision"], "Scale")
         self.assertEqual(out.loc[1, "decision"], "Test")
         self.assertEqual(out.loc[2, "decision"], "Reduce")
+        self.assertTrue((out["engine_version"] == ENGINE_VERSION).all())
 
     def test_quality_metrics(self):
         installs = self.installs.copy()

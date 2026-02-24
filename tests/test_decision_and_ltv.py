@@ -67,6 +67,8 @@ class DecisionAndLTVTests(unittest.TestCase):
         self.assertEqual(m["installs_invalid_ts"], 1)
         self.assertEqual(m["events_invalid_ts"], 1)
         self.assertGreaterEqual(m["event_id_match_rate"], 0.0)
+        self.assertIn("quality_score", m)
+        self.assertIn("matched_event_id_count", m)
 
 
 if __name__ == "__main__":

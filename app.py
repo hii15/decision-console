@@ -53,22 +53,32 @@ if cost_file is not None:
 else:
     st.success("파일 로드 완료")
 
-with st.expander("Data Quality Diagnostics", expanded=False):
+with st.expander("데이터 품질 진단", expanded=False):
     dq = compute_data_quality_metrics(installs_df, events_df)
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Installs rows", f"{dq['installs_rows']:,}")
-    c2.metric("Events rows", f"{dq['events_rows']:,}")
-    c3.metric("Event ID match rate", f"{dq['event_id_match_rate'] * 100:.1f}%")
-    c4.metric("Purchase coverage", f"{dq['purchase_event_coverage'] * 100:.1f}%")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Installs 행수", f"{dq['installs_rows']:,}")
+    c2.metric("Events 행수", f"{dq['events_rows']:,}")
+    c3.metric("Event ID 매칭률", f"{dq['event_id_match_rate'] * 100:.1f}%")
+    c4.metric("구매 이벤트 비중", f"{dq['purchase_event_coverage'] * 100:.1f}%")
+    c5.metric("품질 점수", f"{dq['quality_score']:.1f}")
 
     dqc1, dqc2 = st.columns(2)
     dqc1.write(
-        f"- installs invalid timestamp: {dq['installs_invalid_ts']:,} "
+        f"- installs 타임스탬프 파싱 실패: {dq['installs_invalid_ts']:,} "
         f"({dq['installs_invalid_ts_rate'] * 100:.1f}%)"
     )
     dqc2.write(
-        f"- events invalid timestamp: {dq['events_invalid_ts']:,} "
+        f"- events 타임스탬프 파싱 실패: {dq['events_invalid_ts']:,} "
         f"({dq['events_invalid_ts_rate'] * 100:.1f}%)"
+    )
+
+    st.write(
+        f"- 매칭된 Event ID: {dq['matched_event_id_count']:,} / {dq['event_id_count']:,} "
+        f"(미매칭 {dq['unmatched_event_id_count']:,})"
+    )
+    st.write(
+        f"- revenue 결측 이벤트: {dq['missing_revenue_count']:,} "
+        f"({dq['missing_revenue_rate'] * 100:.1f}%)"
     )
 
 base_target = st.number_input(

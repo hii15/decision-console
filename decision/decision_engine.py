@@ -48,7 +48,7 @@ def run_decision_engine(
 
     def rule(row):
         if "cost" in row and float(row.get("cost", 0.0)) <= 0:
-            return zero_cost_decision
+            return zero_cost_decision, "zero_cost"
 
         ratio = row["d7_roas"] / row["adjusted_target_roas"] if row["adjusted_target_roas"] > 0 else 0.0
         for r in rules:
@@ -64,11 +64,13 @@ def run_decision_engine(
                 if decision_label == "Scale" and "installs" in row:
                     installs = float(row.get("installs", 0.0))
                     if installs < float(min_installs_for_scale):
-                        return "Test"
-                return decision_label
-        return fallback
+                        return "Test", "low_volume_guard"
+                return decision_label, f"rule:{op}{threshold}"
+        return fallback, "fallback"
 
-    out["decision"] = out.apply(rule, axis=1)
+    decisions = out.apply(rule, axis=1)
+    out["decision"] = decisions.apply(lambda x: x[0])
+    out["decision_reason"] = decisions.apply(lambda x: x[1])
     out["engine_version"] = ENGINE_VERSION
 
     return out

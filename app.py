@@ -27,8 +27,8 @@ def _to_csv_bytes(df: pd.DataFrame) -> bytes:
 
 
 @st.cache_data(show_spinner=False)
-def _cached_d7_ltv(installs: pd.DataFrame, events: pd.DataFrame, min_maturity_days: int) -> pd.DataFrame:
-    return calculate_d7_ltv(installs, events, min_maturity_days=min_maturity_days)
+def _cached_d7_ltv(installs: pd.DataFrame, events: pd.DataFrame, min_maturity_days: int, as_of_time: pd.Timestamp) -> pd.DataFrame:
+    return calculate_d7_ltv(installs, events, min_maturity_days=min_maturity_days, as_of_time=as_of_time)
 
 
 @st.cache_data(show_spinner=False)
@@ -72,14 +72,31 @@ if not installs_file or not events_file:
     st.info("인스톨/이벤트 파일을 모두 업로드해 주세요.")
     st.stop()
 
-runtime_cfg = load_runtime_config(config_file)
+try:
+    runtime_cfg = load_runtime_config(config_file)
+except Exception as e:
+    st.error(f"Runtime 설정 JSON 파싱 실패: {e}")
+    st.stop()
 
-installs_df = preprocess_installs(load_file(installs_file))
-events_df = preprocess_events(load_file(events_file))
+try:
+    installs_df = preprocess_installs(load_file(installs_file))
+except Exception as e:
+    st.error(f"Installs 파일 처리 실패: {e}")
+    st.stop()
+
+try:
+    events_df = preprocess_events(load_file(events_file))
+except Exception as e:
+    st.error(f"Events 파일 처리 실패: {e}")
+    st.stop()
 
 if cost_file is not None:
-    installs_df = apply_cost_report(installs_df, load_file(cost_file))
-    st.success("파일 로드 완료 + Cost Report 조인 적용")
+    try:
+        installs_df = apply_cost_report(installs_df, load_file(cost_file))
+        st.success("파일 로드 완료 + Cost Report 조인 적용")
+    except Exception as e:
+        st.error(f"Cost Report 처리 실패: {e}")
+        st.stop()
 else:
     st.success("파일 로드 완료")
 
@@ -186,6 +203,8 @@ channel_map = dict(zip(edited_channel_df["media_source"], edited_channel_df["cha
 settings_col1, settings_col2 = st.columns(2)
 with settings_col1:
     min_maturity_days = st.number_input("D7 계산 최소 코호트 성숙일", min_value=0, value=7, step=1)
+    max_install_time = pd.to_datetime(installs_df["install_time"], errors="coerce").max()
+    as_of_date = st.date_input("코호트 성숙 기준일(as-of)", value=max_install_time.date())
 with settings_col2:
     min_installs_for_scale = st.number_input(
         "Scale 최소 installs",
@@ -201,8 +220,9 @@ tab1, tab2, tab3 = st.tabs(["의사결정", "리스크 히트맵", "LTV 커브"]
 
 # ====== Decision View ======
 with tab1:
-    result_df = _cached_d7_ltv(installs_df, events_df, int(min_maturity_days))
-    final_df = run_decision_engine(
+    try:
+        result_df = _cached_d7_ltv(installs_df, events_df, int(min_maturity_days), pd.Timestamp(as_of_date))
+        final_df = run_decision_engine(
         result_df,
         channel_map,
         base_target,
@@ -210,7 +230,10 @@ with tab1:
         decision_rules=runtime_cfg.decision_rules,
         fallback_decision=runtime_cfg.fallback_decision,
         min_installs_for_scale=int(min_installs_for_scale),
-    )
+        )
+    except Exception as e:
+        st.error(f"의사결정 계산 실패: {e}")
+        st.stop()
 
     st.markdown("## 의사결정 테이블")
     st.caption("포트폴리오 관점: 채널별 D7 성과와 목표 대비 갭을 바탕으로 예산 증액/테스트/축소 우선순위를 빠르게 확인합니다.")
@@ -234,6 +257,8 @@ with tab1:
     final_df = final_df.merge(momentum_latest, on="media_source", how="left")
 
     st.write(style_decision_table(final_df))
+    with st.expander("결정 사유 분포", expanded=False):
+        st.dataframe(final_df["decision_reason"].value_counts(dropna=False).rename_axis("reason").reset_index(name="count"), width="stretch")
 
     with st.expander("룰 버전 changelog", expanded=False):
         current = RULE_CHANGELOG.get(ENGINE_VERSION)
@@ -317,9 +342,13 @@ with tab2:
         with m2:
             min_cost = st.number_input("셀당 최소 cost", min_value=0.0, value=50.0, step=10.0, key="hm_min_cost")
 
-    daily_df = _cached_daily(installs_df, events_df, level=level)
-    daily_df["install_date"] = pd.to_datetime(daily_df["install_date"])
-    max_date = daily_df["install_date"].max()
+    try:
+        daily_df = _cached_daily(installs_df, events_df, level=level)
+        daily_df["install_date"] = pd.to_datetime(daily_df["install_date"])
+        max_date = daily_df["install_date"].max()
+    except Exception as e:
+        st.error(f"히트맵 계산 실패: {e}")
+        st.stop()
 
     if lookback != "All":
         days = int(re.search(r"\d+", lookback).group())
@@ -455,13 +484,17 @@ with tab3:
     if curve_range != "All":
         lookback_days = int(re.search(r"\d+", curve_range).group())
 
-    curve_df = _cached_curve(
-        installs_df,
-        events_df,
-        level=curve_level,
-        day_points=day_points,
-        lookback_days=lookback_days,
-    )
+    try:
+        curve_df = _cached_curve(
+            installs_df,
+            events_df,
+            level=curve_level,
+            day_points=day_points,
+            lookback_days=lookback_days,
+        )
+    except Exception as e:
+        st.error(f"커브 계산 실패: {e}")
+        st.stop()
 
     if curve_df.empty:
         st.warning("커브 데이터가 없습니다. 필터를 변경해 보세요.")

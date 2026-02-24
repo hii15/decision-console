@@ -8,7 +8,12 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def calculate_d7_ltv(installs_df: pd.DataFrame, events_df: pd.DataFrame, min_maturity_days: int = 7) -> pd.DataFrame:
+def calculate_d7_ltv(
+    installs_df: pd.DataFrame,
+    events_df: pd.DataFrame,
+    min_maturity_days: int = 7,
+    as_of_time: pd.Timestamp | None = None,
+) -> pd.DataFrame:
     installs = _normalize_columns(installs_df)
     events = _normalize_columns(events_df)
 
@@ -29,7 +34,7 @@ def calculate_d7_ltv(installs_df: pd.DataFrame, events_df: pd.DataFrame, min_mat
     if len(installs) == 0:
         return pd.DataFrame(columns=["media_source", "campaign", "installs", "cost", "d7_revenue", "d7_ltv", "d7_roas", "installs_total", "mature_ratio"])
 
-    max_install_time = installs["install_time"].max()
+    max_install_time = pd.to_datetime(as_of_time) if as_of_time is not None else installs["install_time"].max()
     installs["cohort_age_days"] = (max_install_time - installs["install_time"]).dt.total_seconds() / 86400.0
     mature_installs = installs[installs["cohort_age_days"] >= float(min_maturity_days)].copy()
 

@@ -111,11 +111,11 @@
 ---
 
 ## 6) 즉시 실행 가능한 TODO (짧은 체크리스트)
-- [ ] `tests/test_ltv_calculator.py` 추가
-- [ ] `tests/test_decision_engine.py` 추가
-- [ ] `app.py`에 Data Quality expander 추가
-- [ ] Export 버튼 3개(Decision/Daily/Curve) 추가
-- [ ] `momentum.py`, `payback.py`에 최소 함수 시그니처와 docstring 작성
+- [x] 업로드/계산 단계 에러 핸들링(`st.error`) 적용
+- [x] D7 성숙 기준일(as-of) UI 반영 및 계산 연결
+- [x] 의사결정 사유 컬럼(`decision_reason`) 노출
+- [ ] Data Quality 지표를 경고 우선순위 기준으로 색상화
+- [ ] Payback/Momentum을 룰 엔진 입력으로 확장할지 PoC 결정
 
 ---
 

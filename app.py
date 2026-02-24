@@ -175,6 +175,15 @@ with tab3:
     with c5:
         show_sample = st.checkbox("Show N/Cost in legend", value=True, key="cv_show_sample")
 
+    # 추가 옵션: 모수 기반 흐리게
+    opt1, opt2, opt3 = st.columns([1, 1, 1])
+    with opt1:
+        fade_small = st.checkbox("Fade small samples", value=True, key="cv_fade")
+    with opt2:
+        n_low = st.number_input("Fade threshold (low N)", min_value=1, value=50, step=10, key="cv_nlow")
+    with opt3:
+        n_high = st.number_input("Solid threshold (high N)", min_value=10, value=800, step=50, key="cv_nhigh")
+
     day_points = (0, 1, 3, 7)
 
     lookback_days = None
@@ -194,7 +203,6 @@ with tab3:
         st.warning("No curve data. Try changing filters.")
         st.stop()
 
-    # default keys: D7 기준 상위 N
     last_day = max(day_points)
     if curve_metric == "revenue":
         rank = curve_df[curve_df["day"] == last_day].sort_values("revenue", ascending=False)
@@ -220,10 +228,18 @@ with tab3:
         st.dataframe(d_last[show_cols].sort_values(curve_metric, ascending=False), use_container_width=True)
 
     title = f"Cumulative Curve ({curve_level}) - days={list(day_points)}"
+
+    # ✅ ROAS일 때만 target 라인 표시
+    target_line = base_target if curve_metric == "roas" else None
+
     show_ltv_curve(
         curve_df,
         metric=curve_metric,
         selected_keys=selected_keys,
         title=title,
         show_sample_in_legend=show_sample,
+        target_roas=target_line,
+        fade_by_sample=fade_small,
+        n_low=int(n_low),
+        n_high=int(n_high),
     )

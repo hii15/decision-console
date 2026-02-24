@@ -56,10 +56,10 @@
 ## 4) 권장 개발 방향 (6주 제안)
 
 ## Sprint 1 (주 1-2): 신뢰성 기반 만들기
-- [ ] `tests/` 도입 + 핵심 계산 함수 단위테스트 작성
-- [ ] 샘플 fixture(csv) 2종(정상/이상치) 추가
-- [ ] CI에서 `pytest` 자동 실행
-- [ ] App 내 **Data Quality Panel** 추가
+- [x] `tests/` 도입 + 핵심 계산 함수 단위테스트 작성
+- [x] 샘플 fixture(csv) 2종(정상/이상치) 추가
+- [x] CI에서 자동 테스트 실행 (GitHub Actions, unittest)
+- [x] App 내 **Data Quality Panel** 추가
   - installs/events row count
   - appsflyer_id match rate
   - invalid timestamp 비율
@@ -70,11 +70,11 @@
 - 업로드 직후 품질 진단표 1개 이상 노출
 
 ## Sprint 2 (주 3-4): 스냅샷 우선순위 기능 구현
-- [ ] Export 기능
+- [x] Export 기능
   - Decision 결과 CSV
   - Daily metric pivot CSV
   - Curve long-format CSV
-- [ ] Trend/MA3
+- [x] Trend/MA3
   - level별 D7 ROAS trend line
   - MA3/DoD 표시
 - [ ] Payback Day v1
@@ -87,9 +87,9 @@
 - Payback 결과를 decision table 옆 요약으로 표시
 
 ## Sprint 3 (주 5-6): 운영성/확장성
-- [ ] cost report join(선택 업로드)
-- [ ] target/multiplier를 UI 외부 설정파일(.yaml/.json)로 분리
-- [ ] rule engine 버전 태깅(`engine_version`) 및 결과 컬럼에 기록
+- [x] cost report join(선택 업로드)
+- [x] target/multiplier를 UI 외부 설정파일(.json)로 분리
+- [x] rule engine 버전 태깅(`engine_version`) 및 결과 컬럼에 기록
 
 **완료 기준**
 - Raw installs cost 부재 시에도 external cost upload로 대체 가능
@@ -121,3 +121,9 @@
 
 ## 7) 결론
 이 프로젝트는 이미 “보여주기용 대시보드”를 넘어 **실무 의사결정 콘솔의 뼈대**를 갖췄습니다. 다음 단계는 알고리즘 고도화보다, **신뢰성(테스트/진단) + 운영성(Export/추세) + 재현성(룰 버전 관리)**을 먼저 강화하는 것이 가장 높은 ROI를 냅니다.
+
+
+## 8) 현재 남은 우선 과제 (업데이트)
+- [ ] timezone 진단을 install/event 각각 상세화(UTC/offset/naive 비율 분리)
+- [ ] 룰 테이블을 앱/국가/OS 조건식까지 확장
+- [ ] 룰 버전 changelog(버전-규칙 맵) 문서화

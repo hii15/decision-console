@@ -55,6 +55,27 @@ class DecisionAndLTVTests(unittest.TestCase):
         self.assertEqual(out.loc[2, "decision"], "Reduce")
         self.assertTrue((out["engine_version"] == ENGINE_VERSION).all())
 
+    def test_run_decision_engine_with_rule_table(self):
+        base = pd.DataFrame(
+            {
+                "media_source": ["facebook", "googleadwords_int"],
+                "campaign": ["c1", "c2"],
+                "d7_roas": [0.95, 0.55],
+            }
+        )
+        out = run_decision_engine(
+            base,
+            channel_map={"facebook": "Performance", "googleadwords_int": "Performance"},
+            base_target=1.0,
+            decision_rules=[
+                {"op": ">=", "threshold": 0.9, "decision": "Scale"},
+                {"op": ">=", "threshold": 0.6, "decision": "Test"},
+            ],
+            fallback_decision="Reduce",
+        )
+        self.assertEqual(out.loc[0, "decision"], "Scale")
+        self.assertEqual(out.loc[1, "decision"], "Reduce")
+
     def test_quality_metrics(self):
         installs = self.installs.copy()
         events = self.events.copy()
@@ -69,6 +90,7 @@ class DecisionAndLTVTests(unittest.TestCase):
         self.assertGreaterEqual(m["event_id_match_rate"], 0.0)
         self.assertIn("quality_score", m)
         self.assertIn("matched_event_id_count", m)
+        self.assertIn("events_timezone_naive_rate", m)
 
 
 if __name__ == "__main__":

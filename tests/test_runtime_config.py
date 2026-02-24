@@ -34,6 +34,13 @@ class RuntimeConfigTests(unittest.TestCase):
         )
         self.assertEqual(out.loc[0, "decision"], "Test")
 
+    def test_load_runtime_config_with_rule_overrides(self):
+        payload = io.StringIO(
+            '{"decision_rules":[{"op":">=","threshold":0.95,"decision":"Scale"}],"fallback_decision":"Reduce"}'
+        )
+        cfg = load_runtime_config(payload)
+        self.assertEqual(cfg.decision_rules[0]["decision"], "Scale")
+        self.assertEqual(cfg.fallback_decision, "Reduce")
 
 if __name__ == "__main__":
     unittest.main()

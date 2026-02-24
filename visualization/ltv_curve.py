@@ -141,4 +141,4 @@ def show_ltv_curve(
             pass
 
     fig.update_layout(height=520, legend_title_text="")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

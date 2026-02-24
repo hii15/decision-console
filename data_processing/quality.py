@@ -33,13 +33,22 @@ def compute_data_quality_metrics(installs_df: pd.DataFrame, events_df: pd.DataFr
         missing_revenue_count = int(events["revenue"].isna().sum())
     missing_revenue_rate = (missing_revenue_count / events_rows) if events_rows else 0.0
 
+    events_timezone_naive_count = 0
+    if "event_time" in events.columns:
+        parsed_event_time = pd.to_datetime(events["event_time"], errors="coerce")
+        # timezone 정보 없는 timestamp 비율(naive)
+        events_timezone_naive_count = int(parsed_event_time.dt.tz is None) * int(parsed_event_time.notna().sum())
+
+    events_timezone_naive_rate = (events_timezone_naive_count / events_rows) if events_rows else 0.0
+
     quality_score = max(
         0.0,
         100.0
         - installs_invalid_ts_rate * 35.0
         - events_invalid_ts_rate * 35.0
         - (1.0 - match_rate) * 20.0
-        - missing_revenue_rate * 10.0,
+        - missing_revenue_rate * 10.0
+        - events_timezone_naive_rate * 5.0,
     )
 
     return {
@@ -57,5 +66,7 @@ def compute_data_quality_metrics(installs_df: pd.DataFrame, events_df: pd.DataFr
         "missing_revenue_rate": float(missing_revenue_rate),
         "purchase_event_count": int(purchase_events),
         "purchase_event_coverage": float(purchase_coverage),
+        "events_timezone_naive_count": int(events_timezone_naive_count),
+        "events_timezone_naive_rate": float(events_timezone_naive_rate),
         "quality_score": float(quality_score),
     }

@@ -90,4 +90,4 @@ def show_risk_heatmap(
         margin=dict(l=10, r=10, t=50, b=10),
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")

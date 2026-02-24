@@ -1,10 +1,11 @@
 from config.target_config import DEFAULT_MULTIPLIER
+from config.rule_config import DEFAULT_DECISION_RULES, DEFAULT_FALLBACK_DECISION
 
 
 ENGINE_VERSION = "deterministic_v1.1"
 
 
-def run_decision_engine(df, channel_map, base_target, multiplier_map=None):
+def run_decision_engine(df, channel_map, base_target, multiplier_map=None, decision_rules=None, fallback_decision=None):
     """
     Deterministic decision engine v1
     - channel_type -> multiplier -> adjusted_target_roas
@@ -19,12 +20,18 @@ def run_decision_engine(df, channel_map, base_target, multiplier_map=None):
 
     out["roas_gap"] = out["d7_roas"] - out["adjusted_target_roas"]
 
+    rules = decision_rules if decision_rules is not None else DEFAULT_DECISION_RULES
+    fallback = fallback_decision if fallback_decision is not None else DEFAULT_FALLBACK_DECISION
+
     def rule(row):
-        if row["d7_roas"] >= row["adjusted_target_roas"]:
-            return "Scale"
-        elif row["d7_roas"] >= row["adjusted_target_roas"] * 0.8:
-            return "Test"
-        return "Reduce"
+        ratio = row["d7_roas"] / row["adjusted_target_roas"] if row["adjusted_target_roas"] > 0 else 0.0
+        for r in rules:
+            threshold = float(r.get("threshold", 1.0))
+            op = r.get("op", ">=")
+            decision_label = r.get("decision", "Test")
+            if (op == ">=" and ratio >= threshold) or (op == ">" and ratio > threshold):
+                return decision_label
+        return fallback
 
     out["decision"] = out.apply(rule, axis=1)
     out["engine_version"] = ENGINE_VERSION

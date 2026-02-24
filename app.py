@@ -80,6 +80,12 @@ with st.expander("데이터 품질 진단", expanded=False):
         f"- revenue 결측 이벤트: {dq['missing_revenue_count']:,} "
         f"({dq['missing_revenue_rate'] * 100:.1f}%)"
     )
+    tz_warning = "경고 없음"
+    if dq["events_timezone_naive_rate"] > 0:
+        tz_warning = "timezone 정보가 없는 이벤트가 포함되어 있습니다"
+    st.write(
+        f"- timezone 경고: {tz_warning} (naive 비율 {dq['events_timezone_naive_rate'] * 100:.1f}%)"
+    )
 
 base_target = st.number_input(
     "기준 Target D7 ROAS (예: 1.0 = 100%)",
@@ -109,7 +115,14 @@ tab1, tab2, tab3 = st.tabs(["의사결정", "리스크 히트맵", "LTV 커브"]
 # ====== Decision View ======
 with tab1:
     result_df = calculate_d7_ltv(installs_df, events_df)
-    final_df = run_decision_engine(result_df, channel_map, base_target, multiplier_map=runtime_cfg.multiplier_map)
+    final_df = run_decision_engine(
+        result_df,
+        channel_map,
+        base_target,
+        multiplier_map=runtime_cfg.multiplier_map,
+        decision_rules=runtime_cfg.decision_rules,
+        fallback_decision=runtime_cfg.fallback_decision,
+    )
 
     st.markdown("## 의사결정 테이블")
     st.caption("포트폴리오 관점: 채널별 D7 성과와 목표 대비 갭을 바탕으로 예산 증액/테스트/축소 우선순위를 빠르게 확인합니다.")

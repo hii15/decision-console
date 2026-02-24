@@ -15,6 +15,7 @@ from visualization.heatmap import show_risk_heatmap
 from visualization.ltv_curve import show_ltv_curve
 
 from config.channel_config import DEFAULT_CHANNEL_MAP
+from config.runtime_config import load_runtime_config
 
 
 def _to_csv_bytes(df: pd.DataFrame) -> bytes:
@@ -32,9 +33,13 @@ with col1:
 with col2:
     events_file = st.file_uploader("Upload Events Raw (CSV/XLSX)", type=["csv", "xlsx"])
 
+config_file = st.file_uploader("(Optional) Runtime Config JSON", type=["json"])
+
 if not installs_file or not events_file:
     st.info("Please upload both installs and events files.")
     st.stop()
+
+runtime_cfg = load_runtime_config(config_file)
 
 installs_df = preprocess_installs(load_file(installs_file), generate_cost_if_missing=True)
 events_df = preprocess_events(load_file(events_file))
@@ -61,7 +66,7 @@ with st.expander("Data Quality Diagnostics", expanded=False):
 base_target = st.number_input(
     "Base Target D7 ROAS (예: 1.0 = 100%)",
     min_value=0.0,
-    value=1.0,
+    value=float(runtime_cfg.base_target) if runtime_cfg.base_target is not None else 1.0,
     step=0.05
 )
 
@@ -70,7 +75,7 @@ unique_sources = list(installs_df["media_source"].unique())
 
 channel_map = {}
 for source in unique_sources:
-    default_type = DEFAULT_CHANNEL_MAP.get(source, "Performance")
+    default_type = runtime_cfg.channel_map.get(source, DEFAULT_CHANNEL_MAP.get(source, "Performance"))
     channel_type = st.selectbox(
         f"{source}",
         ["Performance", "Hybrid", "Branding"],
@@ -86,7 +91,7 @@ tab1, tab2, tab3 = st.tabs(["Decision View", "Risk Heatmap", "LTV Curve"])
 # ====== Decision View ======
 with tab1:
     result_df = calculate_d7_ltv(installs_df, events_df)
-    final_df = run_decision_engine(result_df, channel_map, base_target)
+    final_df = run_decision_engine(result_df, channel_map, base_target, multiplier_map=runtime_cfg.multiplier_map)
 
     st.markdown("## Decision Table")
     st.caption(f"Engine version: {ENGINE_VERSION}")

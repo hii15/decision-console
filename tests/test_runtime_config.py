@@ -1,0 +1,39 @@
+import io
+import unittest
+
+import pandas as pd
+
+from config.runtime_config import load_runtime_config
+from decision.decision_engine import run_decision_engine
+
+
+class RuntimeConfigTests(unittest.TestCase):
+    def test_load_runtime_config_with_overrides(self):
+        payload = io.StringIO(
+            '{"base_target":1.2,"channel_map":{"facebook":"Hybrid"},"multiplier_map":{"Hybrid":0.9}}'
+        )
+        cfg = load_runtime_config(payload)
+        self.assertAlmostEqual(cfg.base_target, 1.2)
+        self.assertEqual(cfg.channel_map["facebook"], "Hybrid")
+        self.assertAlmostEqual(cfg.multiplier_map["Hybrid"], 0.9)
+
+    def test_decision_engine_uses_custom_multiplier_map(self):
+        df = pd.DataFrame(
+            {
+                "media_source": ["facebook"],
+                "campaign": ["c1"],
+                "d7_roas": [0.95],
+            }
+        )
+        channel_map = {"facebook": "Hybrid"}
+        out = run_decision_engine(
+            df,
+            channel_map=channel_map,
+            base_target=1.0,
+            multiplier_map={"Hybrid": 1.0},
+        )
+        self.assertEqual(out.loc[0, "decision"], "Test")
+
+
+if __name__ == "__main__":
+    unittest.main()

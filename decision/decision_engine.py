@@ -4,7 +4,7 @@ from config.target_config import DEFAULT_MULTIPLIER
 ENGINE_VERSION = "deterministic_v1.1"
 
 
-def run_decision_engine(df, channel_map, base_target):
+def run_decision_engine(df, channel_map, base_target, multiplier_map=None):
     """
     Deterministic decision engine v1
     - channel_type -> multiplier -> adjusted_target_roas
@@ -13,7 +13,8 @@ def run_decision_engine(df, channel_map, base_target):
     out = df.copy()
 
     out["channel_type"] = out["media_source"].map(channel_map).fillna("Performance")
-    out["multiplier"] = out["channel_type"].map(DEFAULT_MULTIPLIER).fillna(1.0)
+    effective_multiplier = multiplier_map if multiplier_map is not None else DEFAULT_MULTIPLIER
+    out["multiplier"] = out["channel_type"].map(effective_multiplier).fillna(1.0)
     out["adjusted_target_roas"] = base_target * out["multiplier"]
 
     out["roas_gap"] = out["d7_roas"] - out["adjusted_target_roas"]

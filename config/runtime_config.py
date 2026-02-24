@@ -60,6 +60,7 @@ def load_runtime_config(config_file) -> RuntimeConfig:
                 "op": str(rule.get("op", ">=")),
                 "threshold": float(rule.get("threshold", 1.0)),
                 "decision": str(rule.get("decision", "Test")),
+                "conditions": rule.get("conditions", {}),
             }
         )
 

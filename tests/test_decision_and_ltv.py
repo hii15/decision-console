@@ -2,6 +2,7 @@ import unittest
 import pandas as pd
 
 from data_processing.ltv_calculator import calculate_d7_ltv
+from data_processing.loader import preprocess_installs, preprocess_events
 from decision.decision_engine import run_decision_engine, ENGINE_VERSION
 from data_processing.quality import compute_data_quality_metrics
 
@@ -76,6 +77,50 @@ class DecisionAndLTVTests(unittest.TestCase):
         self.assertEqual(out.loc[0, "decision"], "Scale")
         self.assertEqual(out.loc[1, "decision"], "Reduce")
 
+
+    def test_loader_converts_utc_to_kst(self):
+        installs_raw = pd.DataFrame({
+            "appsflyer_id": ["u1"],
+            "install_time_utc": ["2026-01-01 00:00:00"],
+            "media_source": ["facebook"],
+            "campaign": ["c1"],
+            "cost": [1.0],
+        })
+        events_raw = pd.DataFrame({
+            "appsflyer_id": ["u1"],
+            "event_time_utc": ["2026-01-01 00:00:00"],
+            "event_name": ["af_purchase"],
+            "af_revenue_usd": [1.0],
+        })
+
+        installs = preprocess_installs(installs_raw)
+        events = preprocess_events(events_raw)
+        self.assertEqual(installs.loc[0, "install_time"].hour, 9)
+        self.assertEqual(events.loc[0, "event_time"].hour, 9)
+
+
+    def test_run_decision_engine_rule_conditions(self):
+        base = pd.DataFrame(
+            {
+                "media_source": ["facebook", "facebook"],
+                "campaign": ["c1", "c2"],
+                "country": ["KR", "US"],
+                "d7_roas": [0.92, 0.92],
+            }
+        )
+        out = run_decision_engine(
+            base,
+            channel_map={"facebook": "Performance"},
+            base_target=1.0,
+            decision_rules=[
+                {"op": ">=", "threshold": 0.9, "decision": "Scale", "conditions": {"country": "KR"}},
+                {"op": ">=", "threshold": 0.9, "decision": "Test"},
+            ],
+            fallback_decision="Reduce",
+        )
+        self.assertEqual(out.loc[0, "decision"], "Scale")
+        self.assertEqual(out.loc[1, "decision"], "Test")
+
     def test_quality_metrics(self):
         installs = self.installs.copy()
         events = self.events.copy()
@@ -91,6 +136,7 @@ class DecisionAndLTVTests(unittest.TestCase):
         self.assertIn("quality_score", m)
         self.assertIn("matched_event_id_count", m)
         self.assertIn("events_timezone_naive_rate", m)
+        self.assertIn("events_has_utc_col", m)
 
 
 if __name__ == "__main__":

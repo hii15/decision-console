@@ -2,11 +2,18 @@ import pandas as pd
 import numpy as np
 
 
+KST_TZ = "Asia/Seoul"
+
+
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    # 컬럼명 공백/이상 문자 제거
     df.columns = [str(c).strip() for c in df.columns]
     return df
+
+
+def _to_kst_naive(series: pd.Series, assume_utc: bool = True) -> pd.Series:
+    parsed = pd.to_datetime(series, errors="coerce", utc=assume_utc)
+    return parsed.dt.tz_convert(KST_TZ).dt.tz_localize(None)
 
 
 def load_file(uploaded_file):
@@ -20,19 +27,28 @@ def load_file(uploaded_file):
     return _normalize_columns(df)
 
 
-def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True, **kwargs) -> pd.DataFrame:
+def preprocess_installs(
+    df: pd.DataFrame,
+    generate_cost_if_missing: bool = True,
+    convert_utc_to_kst: bool = True,
+    **kwargs,
+) -> pd.DataFrame:
     df = _normalize_columns(df)
 
-    # 필수 컬럼(공백 제거 후 체크)
     for col in ["media_source", "campaign"]:
         if col not in df.columns:
             raise ValueError(f"[installs] missing required column: '{col}'. columns={list(df.columns)}")
 
-    # 시간 컬럼
     if "install_time_utc" in df.columns:
-        df["install_time"] = pd.to_datetime(df["install_time_utc"], errors="coerce")
+        if convert_utc_to_kst:
+            df["install_time"] = _to_kst_naive(df["install_time_utc"], assume_utc=True)
+        else:
+            df["install_time"] = pd.to_datetime(df["install_time_utc"], errors="coerce")
     elif "install_time" in df.columns:
-        df["install_time"] = pd.to_datetime(df["install_time"], errors="coerce")
+        if convert_utc_to_kst:
+            df["install_time"] = _to_kst_naive(df["install_time"], assume_utc=True)
+        else:
+            df["install_time"] = pd.to_datetime(df["install_time"], errors="coerce")
     elif "install_date" in df.columns:
         df["install_time"] = pd.to_datetime(df["install_date"], errors="coerce")
     else:
@@ -46,7 +62,6 @@ def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True,
 
     df["install_date"] = df["install_time"].dt.date
 
-    # cost 처리(더미)
     if "cost" not in df.columns:
         if generate_cost_if_missing:
             base_cpi = {
@@ -65,23 +80,28 @@ def preprocess_installs(df: pd.DataFrame, generate_cost_if_missing: bool = True,
     else:
         df["cost"] = pd.to_numeric(df["cost"], errors="coerce").fillna(0.0)
 
-    # appsflyer_id 없으면 생성(더미라도)
     if "appsflyer_id" not in df.columns:
         df["appsflyer_id"] = df.index.astype(str)
 
     return df
 
 
-def preprocess_events(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+def preprocess_events(df: pd.DataFrame, convert_utc_to_kst: bool = True, **kwargs) -> pd.DataFrame:
     df = _normalize_columns(df)
 
     if "event_name" not in df.columns:
         raise ValueError(f"[events] missing required column: event_name. columns={list(df.columns)}")
 
     if "event_time_utc" in df.columns:
-        df["event_time"] = pd.to_datetime(df["event_time_utc"], errors="coerce")
+        if convert_utc_to_kst:
+            df["event_time"] = _to_kst_naive(df["event_time_utc"], assume_utc=True)
+        else:
+            df["event_time"] = pd.to_datetime(df["event_time_utc"], errors="coerce")
     elif "event_time" in df.columns:
-        df["event_time"] = pd.to_datetime(df["event_time"], errors="coerce")
+        if convert_utc_to_kst:
+            df["event_time"] = _to_kst_naive(df["event_time"], assume_utc=True)
+        else:
+            df["event_time"] = pd.to_datetime(df["event_time"], errors="coerce")
     elif "event_date" in df.columns:
         df["event_time"] = pd.to_datetime(df["event_date"], errors="coerce")
     else:

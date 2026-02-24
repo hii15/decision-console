@@ -27,6 +27,7 @@ def _to_csv_bytes(df: pd.DataFrame) -> bytes:
 st.set_page_config(layout="wide")
 st.title("UA 의사결정 지원 콘솔")
 st.markdown("---")
+st.caption("시간 기준: UTC 업로드 데이터를 KST(UTC+9) 기준으로 변환해 분석합니다.")
 
 # 업로드
 col1, col2 = st.columns(2)
@@ -80,9 +81,7 @@ with st.expander("데이터 품질 진단", expanded=False):
         f"- revenue 결측 이벤트: {dq['missing_revenue_count']:,} "
         f"({dq['missing_revenue_rate'] * 100:.1f}%)"
     )
-    tz_warning = "경고 없음"
-    if dq["events_timezone_naive_rate"] > 0:
-        tz_warning = "timezone 정보가 없는 이벤트가 포함되어 있습니다"
+    tz_warning = "UTC 컬럼 기반으로 KST 변환 적용" if dq["events_has_utc_col"] else "event_time_utc 컬럼이 없어 timezone 기준이 불명확"
     st.write(
         f"- timezone 경고: {tz_warning} (naive 비율 {dq['events_timezone_naive_rate'] * 100:.1f}%)"
     )

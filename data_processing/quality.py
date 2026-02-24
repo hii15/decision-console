@@ -25,7 +25,6 @@ def compute_data_quality_metrics(installs_df: pd.DataFrame, events_df: pd.DataFr
     purchase_events = 0
     if "event_name" in events.columns:
         purchase_events = int((events["event_name"] == "af_purchase").sum())
-
     purchase_coverage = (purchase_events / events_rows) if events_rows else 0.0
 
     missing_revenue_count = 0
@@ -33,12 +32,11 @@ def compute_data_quality_metrics(installs_df: pd.DataFrame, events_df: pd.DataFr
         missing_revenue_count = int(events["revenue"].isna().sum())
     missing_revenue_rate = (missing_revenue_count / events_rows) if events_rows else 0.0
 
-    events_timezone_naive_count = 0
-    if "event_time" in events.columns:
-        parsed_event_time = pd.to_datetime(events["event_time"], errors="coerce")
-        # timezone 정보 없는 timestamp 비율(naive)
-        events_timezone_naive_count = int(parsed_event_time.dt.tz is None) * int(parsed_event_time.notna().sum())
+    installs_has_utc_col = "install_time_utc" in installs.columns
+    events_has_utc_col = "event_time_utc" in events.columns
 
+    # KST 변환 기준: *_utc 컬럼이 있으면 timezone 기준이 명시되어 있다고 판단.
+    events_timezone_naive_count = 0 if events_has_utc_col else int(events_rows)
     events_timezone_naive_rate = (events_timezone_naive_count / events_rows) if events_rows else 0.0
 
     quality_score = max(
@@ -66,6 +64,8 @@ def compute_data_quality_metrics(installs_df: pd.DataFrame, events_df: pd.DataFr
         "missing_revenue_rate": float(missing_revenue_rate),
         "purchase_event_count": int(purchase_events),
         "purchase_event_coverage": float(purchase_coverage),
+        "installs_has_utc_col": installs_has_utc_col,
+        "events_has_utc_col": events_has_utc_col,
         "events_timezone_naive_count": int(events_timezone_naive_count),
         "events_timezone_naive_rate": float(events_timezone_naive_rate),
         "quality_score": float(quality_score),

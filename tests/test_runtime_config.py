@@ -42,5 +42,12 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(cfg.decision_rules[0]["decision"], "Scale")
         self.assertEqual(cfg.fallback_decision, "Reduce")
 
+    def test_load_runtime_config_with_rule_conditions(self):
+        payload = io.StringIO(
+            "{\"decision_rules\":[{\"op\":\">=\",\"threshold\":0.95,\"decision\":\"Scale\",\"conditions\":{\"country\":\"KR\"}}]}"
+        )
+        cfg = load_runtime_config(payload)
+        self.assertEqual(cfg.decision_rules[0]["conditions"]["country"], "KR")
+
 if __name__ == "__main__":
     unittest.main()

@@ -77,7 +77,7 @@
 - [x] Trend/MA3
   - level별 D7 ROAS trend line
   - MA3/DoD 표시
-- [ ] Payback Day v1
+- [x] Payback Day v1
   - 누적 revenue >= cost 달성일 계산
   - 미달성 cohort는 `Not reached`
 
@@ -124,6 +124,6 @@
 
 
 ## 8) 현재 남은 우선 과제 (업데이트)
-- [ ] timezone 진단을 install/event 각각 상세화(UTC/offset/naive 비율 분리)
+- [x] timezone 진단 1차 고도화(UTC 컬럼 기반 KST 변환/경고)
 - [ ] 룰 테이블을 앱/국가/OS 조건식까지 확장
 - [ ] 룰 버전 changelog(버전-규칙 맵) 문서화

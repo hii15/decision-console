@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 
+from data_processing.adapters import get_adapter
+
 
 KST_TZ = "Asia/Seoul"
 
@@ -31,9 +33,14 @@ def preprocess_installs(
     df: pd.DataFrame,
     generate_cost_if_missing: bool = False,
     convert_utc_to_kst: bool = True,
+    mmp_source: str = "appsflyer",
     **kwargs,
 ) -> pd.DataFrame:
     df = _normalize_columns(df)
+    original_has_cost = "cost" in df.columns
+
+    adapter = get_adapter(mmp_source)
+    df = adapter.normalize_installs(df)
 
     for col in ["media_source", "campaign"]:
         if col not in df.columns:
@@ -62,7 +69,7 @@ def preprocess_installs(
 
     df["install_date"] = df["install_time"].dt.date
 
-    if "cost" not in df.columns:
+    if not original_has_cost:
         if generate_cost_if_missing:
             base_cpi = {
                 "facebook": 3.5,
@@ -83,14 +90,23 @@ def preprocess_installs(
         df["cost"] = pd.to_numeric(df["cost"], errors="coerce").fillna(0.0)
         df["cost_source"] = "uploaded"
 
-    if "appsflyer_id" not in df.columns:
-        df["appsflyer_id"] = df.index.astype(str)
+    if "user_key" not in df.columns or df["user_key"].isna().all():
+        df["user_key"] = df.index.astype(str)
+    df["appsflyer_id"] = df["user_key"].astype(str)
 
     return df
 
 
-def preprocess_events(df: pd.DataFrame, convert_utc_to_kst: bool = True, **kwargs) -> pd.DataFrame:
+def preprocess_events(
+    df: pd.DataFrame,
+    convert_utc_to_kst: bool = True,
+    mmp_source: str = "appsflyer",
+    **kwargs,
+) -> pd.DataFrame:
     df = _normalize_columns(df)
+
+    adapter = get_adapter(mmp_source)
+    df = adapter.normalize_events(df)
 
     if "event_name" not in df.columns:
         raise ValueError(f"[events] missing required column: event_name. columns={list(df.columns)}")
@@ -118,14 +134,17 @@ def preprocess_events(df: pd.DataFrame, convert_utc_to_kst: bool = True, **kwarg
 
     df["event_date"] = df["event_time"].dt.date
 
-    if "af_revenue_usd" in df.columns:
+    if "revenue" in df.columns:
+        df["revenue"] = pd.to_numeric(df["revenue"], errors="coerce").fillna(0.0)
+    elif "af_revenue_usd" in df.columns:
         df["revenue"] = pd.to_numeric(df["af_revenue_usd"], errors="coerce").fillna(0.0)
     elif "event_revenue" in df.columns:
         df["revenue"] = pd.to_numeric(df["event_revenue"], errors="coerce").fillna(0.0)
     else:
         df["revenue"] = 0.0
 
-    if "appsflyer_id" not in df.columns:
-        df["appsflyer_id"] = None
+    if "user_key" not in df.columns:
+        df["user_key"] = None
+    df["appsflyer_id"] = df["user_key"].astype(str)
 
     return df

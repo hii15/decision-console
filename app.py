@@ -65,6 +65,7 @@ with col1:
 with col2:
     events_file = st.file_uploader("이벤트 Raw 업로드 (CSV/XLSX)", type=["csv", "xlsx"])
 
+mmp_source = st.selectbox("MMP 소스", ["appsflyer", "adjust", "singular"], index=0)
 config_file = st.file_uploader("(선택) Runtime 설정 JSON", type=["json"])
 cost_file = st.file_uploader("(선택) Cost Report 업로드 (CSV/XLSX)", type=["csv", "xlsx"])
 
@@ -79,13 +80,13 @@ except Exception as e:
     st.stop()
 
 try:
-    installs_df = preprocess_installs(load_file(installs_file))
+    installs_df = preprocess_installs(load_file(installs_file), mmp_source=mmp_source)
 except Exception as e:
     st.error(f"Installs 파일 처리 실패: {e}")
     st.stop()
 
 try:
-    events_df = preprocess_events(load_file(events_file))
+    events_df = preprocess_events(load_file(events_file), mmp_source=mmp_source)
 except Exception as e:
     st.error(f"Events 파일 처리 실패: {e}")
     st.stop()

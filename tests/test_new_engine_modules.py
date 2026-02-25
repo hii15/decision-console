@@ -5,6 +5,7 @@ from data_processing.adapters import AppsFlyerAdapter
 from data_processing.canonical_schema import coerce_canonical_types
 from data_processing.metrics_engine import calculate_media_metrics, calculate_cohort_curve
 from data_processing.liveops_analysis import compare_liveops_impact
+from data_processing.decision_engine import apply_decision_logic
 
 
 class NewEngineModulesTests(unittest.TestCase):
@@ -112,6 +113,21 @@ class NewEngineModulesTests(unittest.TestCase):
         out = compare_liveops_impact(installs, events, "2026-01-10", "2026-01-10", baseline_days=1)
         self.assertAlmostEqual(float(out.loc[0, "liveops_d7_ltv"]), 10.0)
         self.assertAlmostEqual(float(out.loc[0, "baseline_d7_ltv"]), 0.0)
+
+    def test_decision_engine_emits_reason(self):
+        base = pd.DataFrame(
+            {
+                "media_source": ["Meta", "Google"],
+                "campaign": ["C1", "C2"],
+                "installs": [100, 300],
+                "d7_roas": [0.8, 1.25],
+            }
+        )
+        out = apply_decision_logic(base, target_roas=1.0, min_installs=200)
+        self.assertIn("decision_reason", out.columns)
+        self.assertEqual(out.loc[0, "decision"], "Hold (Low Sample)")
+        self.assertEqual(out.loc[1, "decision"], "Scale Up")
+
 
 
 if __name__ == "__main__":

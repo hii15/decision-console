@@ -7,7 +7,8 @@ from data_processing.canonical_schema import coerce_canonical_types
 from data_processing.metrics_engine import calculate_media_metrics, calculate_cohort_curve
 from data_processing.decision_engine import apply_decision_logic
 from data_processing.liveops_analysis import compare_liveops_impact
-from dummy_data.generate_dummy_data import get_mmp_raw_bundle
+from dummy_data.generate_dummy_data import get_mmp_raw_bundle, write_mmp_dummy_data
+from dummy_data.run_mmp_experiments import run_experiments
 
 
 st.set_page_config(layout="wide")
@@ -42,11 +43,18 @@ def _normalize_uploaded_data(mmp: str, installs_raw: pd.DataFrame, events_raw: p
     return canonical
 
 
-tab_upload, tab_decision, tab_curve, tab_liveops = st.tabs([
+def _run_and_load_experiment_reports(seed: int):
+    write_mmp_dummy_data(output_dir="dummy_data", seed=seed)
+    summary_path, decision_path, report_path = run_experiments(input_root="dummy_data", output_root="dummy_data/experiments")
+    return pd.read_csv(summary_path), pd.read_csv(decision_path), report_path
+
+
+tab_upload, tab_decision, tab_curve, tab_liveops, tab_experiment = st.tabs([
     "Upload Data",
     "UA Decision",
     "Cohort Curve",
     "LiveOps Impact",
+    "Experiment Report",
 ])
 
 with tab_upload:
@@ -139,3 +147,30 @@ with tab_liveops:
             )
             st.dataframe(impact_df, use_container_width=True)
             st.metric("LiveOps Impact (D7 LTV Delta)", f"{impact_df.loc[0, 'impact']:.4f}")
+
+with tab_experiment:
+    st.subheader("Experiment Report")
+    e1, e2 = st.columns([1, 2])
+    report_seed = e1.number_input("Experiment Seed", min_value=0, value=42, step=1)
+    if e2.button("Run MMP Experiments", use_container_width=True):
+        summary_df, decision_df, report_path = _run_and_load_experiment_reports(int(report_seed))
+        st.session_state["exp_summary"] = summary_df
+        st.session_state["exp_decision"] = decision_df
+        st.session_state["exp_report_path"] = report_path
+        st.success("실험 리포트 생성 완료")
+
+    summary = st.session_state.get("exp_summary")
+    decisions = st.session_state.get("exp_decision")
+    report_path = st.session_state.get("exp_report_path")
+
+    if summary is None or decisions is None or report_path is None:
+        st.info("Run MMP Experiments 버튼을 눌러 리포트를 생성하세요.")
+    else:
+        st.markdown("### Summary")
+        st.dataframe(summary, use_container_width=True)
+
+        st.markdown("### Decision Table")
+        st.dataframe(decisions, use_container_width=True)
+
+        st.markdown("### Markdown Insight")
+        st.code(open(report_path, "r", encoding="utf-8").read(), language="markdown")

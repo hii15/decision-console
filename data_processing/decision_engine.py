@@ -12,14 +12,34 @@ def apply_decision_logic(
 ) -> pd.DataFrame:
     out = metrics_df.copy()
 
-    def _decide(row: pd.Series) -> str:
-        if row["installs"] < min_installs:
-            return "Hold (Low Sample)"
-        if row["d7_roas"] > target_roas * upper_buffer:
-            return "Scale Up"
-        if row["d7_roas"] < target_roas * lower_buffer:
-            return "Scale Down"
-        return "Maintain"
+    def _decide_with_reason(row: pd.Series) -> tuple[str, str]:
+        installs = int(row.get("installs", 0))
+        d7_roas = float(row.get("d7_roas", 0.0))
 
-    out["decision"] = out.apply(_decide, axis=1)
+        if installs < min_installs:
+            return (
+                "Hold (Low Sample)",
+                f"installs {installs} < min_installs {min_installs}",
+            )
+
+        upper = target_roas * upper_buffer
+        lower = target_roas * lower_buffer
+
+        if d7_roas > upper:
+            return (
+                "Scale Up",
+                f"d7_roas {d7_roas:.3f} > upper_bound {upper:.3f}",
+            )
+        if d7_roas < lower:
+            return (
+                "Scale Down",
+                f"d7_roas {d7_roas:.3f} < lower_bound {lower:.3f}",
+            )
+        return (
+            "Maintain",
+            f"lower_bound {lower:.3f} <= d7_roas {d7_roas:.3f} <= upper_bound {upper:.3f}",
+        )
+
+    decision_reason = out.apply(_decide_with_reason, axis=1)
+    out[["decision", "decision_reason"]] = pd.DataFrame(decision_reason.tolist(), index=out.index)
     return out

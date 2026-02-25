@@ -234,6 +234,9 @@ project_root/
 - LiveOps Impact
   - 이벤트 기간 입력
   - Cohort 비교 결과
+- Experiment Report
+  - MMP 더미 실험 실행
+  - Summary/Decision/Insight 확인
 
 ---
 

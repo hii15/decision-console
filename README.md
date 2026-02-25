@@ -304,3 +304,27 @@ pip install -r requirements.txt
 python dummy_data/generate_dummy_data.py
 streamlit run app.py
 ```
+
+
+---
+
+
+## 14. Dummy MMP Raw Scenario (for KR game teams)
+
+실데이터 연동 전 단계에서 아래 MMP Raw 더미를 생성해 동일 분석 파이프라인을 검증할 수 있습니다.
+
+- AppsFlyer Raw (`dummy_data/appsflyer/*.csv`)
+- Adjust Raw (`dummy_data/adjust/*.csv`)
+- Singular Raw (`dummy_data/singular/*.csv`)
+
+실행 순서:
+
+```bash
+python dummy_data/generate_dummy_data.py
+python dummy_data/run_mmp_experiments.py
+```
+
+생성 결과:
+
+- `dummy_data/experiments/mmp_experiment_summary.csv`
+- `dummy_data/experiments/mmp_decision_table.csv`

@@ -58,6 +58,9 @@ st.title("UA 의사결정 지원 콘솔")
 st.markdown("---")
 st.caption("시간 기준: UTC 업로드 데이터를 KST(UTC+9) 기준으로 변환해 분석합니다.")
 
+ux_mode = st.radio("입력 모드", ["Quick Start", "Advanced"], horizontal=True, index=0)
+st.caption("Quick Start는 필수 입력만 노출하고, Advanced는 설정/옵션 입력을 모두 노출합니다.")
+
 # 업로드
 col1, col2 = st.columns(2)
 with col1:
@@ -66,8 +69,13 @@ with col2:
     events_file = st.file_uploader("이벤트 Raw 업로드 (CSV/XLSX)", type=["csv", "xlsx"])
 
 mmp_source = st.selectbox("MMP 소스", ["appsflyer", "adjust", "singular"], index=0)
-config_file = st.file_uploader("(선택) Runtime 설정 JSON", type=["json"])
-cost_file = st.file_uploader("(선택) Cost Report 업로드 (CSV/XLSX)", type=["csv", "xlsx"])
+config_file = None
+cost_file = None
+if ux_mode == "Advanced":
+    adv_upload = st.expander("고급 입력 (선택)", expanded=False)
+    with adv_upload:
+        config_file = st.file_uploader("(선택) Runtime 설정 JSON", type=["json"])
+        cost_file = st.file_uploader("(선택) Cost Report 업로드 (CSV/XLSX)", type=["csv", "xlsx"])
 
 if not installs_file or not events_file:
     st.info("인스톨/이벤트 파일을 모두 업로드해 주세요.")
@@ -104,6 +112,16 @@ else:
 if "cost_source" in installs_df.columns and (installs_df["cost_source"] == "missing_default_zero").any():
     st.warning("⚠️ cost 컬럼이 없어 cost=0으로 처리되었습니다. 현재 ROAS/의사결정은 보수적으로 해석해 주세요.")
 
+with st.expander("입력 상태 체크리스트", expanded=False):
+    checklist = [
+        ("installs 업로드", installs_file is not None),
+        ("events 업로드", events_file is not None),
+        ("MMP 선택", mmp_source in ["appsflyer", "adjust", "singular"]),
+        ("runtime config(선택)", config_file is not None),
+        ("cost report(선택)", cost_file is not None),
+    ]
+    for label, ok in checklist:
+        st.write(f"{'✅' if ok else '⚪'} {label}")
 
 # 전역 필터
 with st.expander("전역 필터", expanded=False):
@@ -185,34 +203,42 @@ st.markdown("## 채널 타입 설정")
 unique_sources = sorted(list(installs_df["media_source"].astype(str).dropna().unique()))
 channel_defaults = [runtime_cfg.channel_map.get(source, DEFAULT_CHANNEL_MAP.get(source, "Performance")) for source in unique_sources]
 
-editor_df = pd.DataFrame({"media_source": unique_sources, "channel_type": channel_defaults})
-edited_channel_df = st.data_editor(
-    editor_df,
-    width="stretch",
-    hide_index=True,
-    column_config={
-        "channel_type": st.column_config.SelectboxColumn(
-            "channel_type",
-            options=["Performance", "Hybrid", "Branding"],
-            required=True,
-        )
-    },
-    key="channel_map_editor",
-)
-channel_map = dict(zip(edited_channel_df["media_source"], edited_channel_df["channel_type"]))
+max_install_time = pd.to_datetime(installs_df["install_time"], errors="coerce").max()
+min_maturity_days = 7
+as_of_date = max_install_time.date()
+min_installs_for_scale = int(runtime_cfg.min_installs_for_scale)
 
-settings_col1, settings_col2 = st.columns(2)
-with settings_col1:
-    min_maturity_days = st.number_input("D7 계산 최소 코호트 성숙일", min_value=0, value=7, step=1)
-    max_install_time = pd.to_datetime(installs_df["install_time"], errors="coerce").max()
-    as_of_date = st.date_input("코호트 성숙 기준일(as-of)", value=max_install_time.date())
-with settings_col2:
-    min_installs_for_scale = st.number_input(
-        "Scale 최소 installs",
-        min_value=1,
-        value=int(runtime_cfg.min_installs_for_scale),
-        step=10,
+if ux_mode == "Advanced":
+    editor_df = pd.DataFrame({"media_source": unique_sources, "channel_type": channel_defaults})
+    edited_channel_df = st.data_editor(
+        editor_df,
+        width="stretch",
+        hide_index=True,
+        column_config={
+            "channel_type": st.column_config.SelectboxColumn(
+                "channel_type",
+                options=["Performance", "Hybrid", "Branding"],
+                required=True,
+            )
+        },
+        key="channel_map_editor",
     )
+    channel_map = dict(zip(edited_channel_df["media_source"], edited_channel_df["channel_type"]))
+
+    settings_col1, settings_col2 = st.columns(2)
+    with settings_col1:
+        min_maturity_days = st.number_input("D7 계산 최소 코호트 성숙일", min_value=0, value=7, step=1)
+        as_of_date = st.date_input("코호트 성숙 기준일(as-of)", value=max_install_time.date())
+    with settings_col2:
+        min_installs_for_scale = st.number_input(
+            "Scale 최소 installs",
+            min_value=1,
+            value=int(runtime_cfg.min_installs_for_scale),
+            step=10,
+        )
+else:
+    channel_map = {source: runtime_cfg.channel_map.get(source, DEFAULT_CHANNEL_MAP.get(source, "Performance")) for source in unique_sources}
+    st.caption("Quick Start 모드: 채널 타입/성숙도/Scale 임계값은 기본값으로 자동 적용됩니다. (Advanced에서 수정 가능)")
 
 st.markdown("---")
 

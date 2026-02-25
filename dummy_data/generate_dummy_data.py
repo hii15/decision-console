@@ -142,22 +142,32 @@ def to_singular_raw(installs: pd.DataFrame, events: pd.DataFrame, cost: pd.DataF
     return installs_raw, events_raw, cost_raw
 
 
+MMP_CONVERTERS = {
+    "AppsFlyer": to_appsflyer_raw,
+    "Adjust": to_adjust_raw,
+    "Singular": to_singular_raw,
+}
+
+
+def get_mmp_raw_bundle(mmp: str, seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    if mmp not in MMP_CONVERTERS:
+        raise ValueError(f"Unsupported MMP: {mmp}")
+    installs, events, cost = generate_canonical_dummy_data(seed=seed)
+    return MMP_CONVERTERS[mmp](installs, events, cost)
+
+
 def write_mmp_dummy_data(output_dir: str = "dummy_data", seed: int = 42) -> dict[str, tuple[str, str, str]]:
     base = Path(output_dir)
     base.mkdir(parents=True, exist_ok=True)
 
     installs, events, cost = generate_canonical_dummy_data(seed=seed)
 
-    converters = {
-        "appsflyer": to_appsflyer_raw,
-        "adjust": to_adjust_raw,
-        "singular": to_singular_raw,
-    }
-
     written = {}
-    for name, converter in converters.items():
-        mmp_dir = base / name
+    for mmp, converter in MMP_CONVERTERS.items():
+        slug = mmp.lower()
+        mmp_dir = base / slug
         mmp_dir.mkdir(parents=True, exist_ok=True)
+
         i_raw, e_raw, c_raw = converter(installs, events, cost)
 
         i_path = mmp_dir / "installs_raw.csv"
@@ -167,7 +177,7 @@ def write_mmp_dummy_data(output_dir: str = "dummy_data", seed: int = 42) -> dict
         i_raw.to_csv(i_path, index=False)
         e_raw.to_csv(e_path, index=False)
         c_raw.to_csv(c_path, index=False)
-        written[name] = (str(i_path), str(e_path), str(c_path))
+        written[slug] = (str(i_path), str(e_path), str(c_path))
 
     return written
 

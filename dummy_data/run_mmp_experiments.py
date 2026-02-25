@@ -20,11 +20,45 @@ MMP_LIST = ["AppsFlyer", "Adjust", "Singular"]
 
 
 def _read_csv(path: str) -> pd.DataFrame:
-    # load_file expects file-like or path string and normalizes columns.
     return load_file(path)
 
 
-def run_experiments(input_root: str = "dummy_data", output_root: str = "dummy_data/experiments") -> tuple[str, str]:
+def _markdown_table(df: pd.DataFrame) -> str:
+    cols = list(df.columns)
+    header = "| " + " | ".join(cols) + " |"
+    sep = "| " + " | ".join(["---"] * len(cols)) + " |"
+    rows = []
+    for _, row in df.iterrows():
+        vals = []
+        for c in cols:
+            v = row[c]
+            if isinstance(v, float):
+                vals.append(f"{v:.4f}")
+            else:
+                vals.append(str(v))
+        rows.append("| " + " | ".join(vals) + " |")
+    return "\n".join([header, sep] + rows)
+
+
+def _write_markdown_report(summary_df: pd.DataFrame, out_path: Path) -> None:
+    best = summary_df.sort_values("avg_d7_roas", ascending=False).iloc[0]
+    strongest_liveops = summary_df.sort_values("liveops_impact", ascending=False).iloc[0]
+
+    lines = [
+        "# MMP Dummy Experiment Report",
+        "",
+        "## Headline",
+        f"- Best avg D7 ROAS: **{best['mmp']}** ({best['avg_d7_roas']:.3f})",
+        f"- Strongest LiveOps uplift: **{strongest_liveops['mmp']}** ({strongest_liveops['liveops_impact']:.3f})",
+        "",
+        "## Summary Table",
+        _markdown_table(summary_df),
+        "",
+    ]
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def run_experiments(input_root: str = "dummy_data", output_root: str = "dummy_data/experiments") -> tuple[str, str, str]:
     out_dir = Path(output_root)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -73,14 +107,17 @@ def run_experiments(input_root: str = "dummy_data", output_root: str = "dummy_da
 
     summary_path = out_dir / "mmp_experiment_summary.csv"
     decision_path = out_dir / "mmp_decision_table.csv"
+    report_path = out_dir / "mmp_experiment_report.md"
 
     summary_df.to_csv(summary_path, index=False)
     decision_df.to_csv(decision_path, index=False)
+    _write_markdown_report(summary_df, report_path)
 
-    return str(summary_path), str(decision_path)
+    return str(summary_path), str(decision_path), str(report_path)
 
 
 if __name__ == "__main__":
-    summary, decisions = run_experiments()
+    summary, decisions, report = run_experiments()
     print(f"summary: {summary}")
     print(f"decisions: {decisions}")
+    print(f"report: {report}")

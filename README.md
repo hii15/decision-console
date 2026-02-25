@@ -324,7 +324,10 @@ python dummy_data/generate_dummy_data.py
 python dummy_data/run_mmp_experiments.py
 ```
 
+또는 Streamlit Upload 탭에서 **Load MMP Dummy Raw** 버튼으로 바로 더미 로딩이 가능합니다.
+
 생성 결과:
 
 - `dummy_data/experiments/mmp_experiment_summary.csv`
 - `dummy_data/experiments/mmp_decision_table.csv`
+- `dummy_data/experiments/mmp_experiment_report.md`

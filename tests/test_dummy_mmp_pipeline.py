@@ -7,7 +7,7 @@ import pandas as pd
 from data_processing.adapters import ADAPTER_REGISTRY
 from data_processing.canonical_schema import coerce_canonical_types
 from data_processing.metrics_engine import calculate_media_metrics
-from dummy_data.generate_dummy_data import write_mmp_dummy_data
+from dummy_data.generate_dummy_data import write_mmp_dummy_data, get_mmp_raw_bundle
 from dummy_data.run_mmp_experiments import run_experiments
 
 
@@ -20,6 +20,13 @@ class DummyMMPPipelineTests(unittest.TestCase):
             for slug, paths in written.items():
                 for p in paths:
                     self.assertTrue(Path(p).exists(), f"missing generated file: {slug} {p}")
+
+    def test_inmemory_bundle_api(self):
+        for mmp in ["AppsFlyer", "Adjust", "Singular"]:
+            installs_raw, events_raw, cost_raw = get_mmp_raw_bundle(mmp=mmp, seed=5)
+            self.assertGreater(len(installs_raw), 0)
+            self.assertGreater(len(events_raw), 0)
+            self.assertGreater(len(cost_raw), 0)
 
     def test_raw_to_canonical_and_metrics_runs_for_each_mmp(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -47,10 +54,11 @@ class DummyMMPPipelineTests(unittest.TestCase):
             data_root = f"{tmpdir}/dummy"
             exp_root = f"{tmpdir}/exp"
             write_mmp_dummy_data(output_dir=data_root, seed=99)
-            summary_path, decision_path = run_experiments(input_root=data_root, output_root=exp_root)
+            summary_path, decision_path, report_path = run_experiments(input_root=data_root, output_root=exp_root)
 
             self.assertTrue(Path(summary_path).exists())
             self.assertTrue(Path(decision_path).exists())
+            self.assertTrue(Path(report_path).exists())
 
             summary = pd.read_csv(summary_path)
             self.assertEqual(set(summary["mmp"]), {"AppsFlyer", "Adjust", "Singular"})

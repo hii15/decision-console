@@ -7,6 +7,7 @@ from data_processing.canonical_schema import coerce_canonical_types
 from data_processing.metrics_engine import calculate_media_metrics, calculate_cohort_curve
 from data_processing.decision_engine import apply_decision_logic
 from data_processing.liveops_analysis import compare_liveops_impact
+from dummy_data.generate_dummy_data import get_mmp_raw_bundle
 
 
 st.set_page_config(layout="wide")
@@ -52,6 +53,16 @@ with tab_upload:
     st.subheader("Upload Data")
     mmp = st.selectbox("MMP 선택", ["AppsFlyer", "Adjust", "Singular"])
 
+    st.markdown("#### Quick Demo")
+    q1, q2 = st.columns([1, 2])
+    dummy_seed = q1.number_input("Dummy Seed", min_value=0, value=42, step=1)
+    if q2.button("Load MMP Dummy Raw", use_container_width=True):
+        installs_raw, events_raw, cost_raw = get_mmp_raw_bundle(mmp=mmp, seed=int(dummy_seed))
+        canonical = _normalize_uploaded_data(mmp, installs_raw, events_raw, cost_raw)
+        st.session_state["canonical"] = canonical
+        st.success(f"{mmp} 더미 데이터 로드 완료")
+
+    st.markdown("#### Manual Upload")
     c1, c2, c3 = st.columns(3)
     installs_file = c1.file_uploader("Install Raw", type=["csv", "xlsx"], key="installs")
     events_file = c2.file_uploader("Event Raw", type=["csv", "xlsx"], key="events")
@@ -66,14 +77,17 @@ with tab_upload:
         st.session_state["canonical"] = canonical
 
         st.success("정규화 완료")
-        st.write("Installs Preview")
-        st.dataframe(canonical.installs.head(10), use_container_width=True)
-        st.write("Events Preview")
-        st.dataframe(canonical.events.head(10), use_container_width=True)
-        st.write("Cost Preview")
-        st.dataframe(canonical.cost.head(10), use_container_width=True)
     else:
-        st.info("Install / Event 파일을 업로드하세요.")
+        st.info("Install / Event 파일을 업로드하거나, 위 Dummy 버튼을 눌러 주세요.")
+
+    canonical_preview = st.session_state.get("canonical")
+    if canonical_preview is not None:
+        st.write("Installs Preview")
+        st.dataframe(canonical_preview.installs.head(10), use_container_width=True)
+        st.write("Events Preview")
+        st.dataframe(canonical_preview.events.head(10), use_container_width=True)
+        st.write("Cost Preview")
+        st.dataframe(canonical_preview.cost.head(10), use_container_width=True)
 
 canonical = st.session_state.get("canonical")
 
